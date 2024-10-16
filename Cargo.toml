@@ -1,0 +1,47 @@
+[package]
+name = "vercre-infosec"
+description = "Information security utilities"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+
+authors = ["Vercre"]
+categories = ["cose", "jose", "cryptography", "security"]
+edition = "2021"
+exclude = [".*", "snapshots/"]
+homepage = "https://vercre.io"
+keywords = ["credentials", "decentralized", "identity", "openid", "verifiable"]
+repository = "https://github.com/vercre/infosec"
+rust-version = "1.80"
+version = "0.1.0-alpha.6"
+
+[lib]
+# crate-type = ["cdylib", "rlib"]
+
+[lints.rust]
+missing_docs = "warn"
+unused_extern_crates = "warn"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+
+[dependencies]
+aes-gcm = "0.10.3"
+anyhow = "1.0.89"
+base64ct = { version = "1.6.0", features = ["std"] }
+ciborium = "0.2.2"
+coset = "0.3.8"
+crypto_box = { version = "0.9.1", features = ["chacha20", "heapless"] }
+ecdsa = "0.16.9"
+ed25519-dalek = { version = "2.1.1", features = ["rand_core"] }
+k256 = "0.13.4"
+serde = { version = "1.0.210", features = ["derive"] }
+serde_json = { version = "1.0.128", features = ["alloc"] }
+tracing = "0.1.40"
+x25519-dalek = { version = "2.0.1", features = ["static_secrets"] }
+
+[dev-dependencies]
+hex = "0.4.3"
+signature = "2.2.0"
+tokio = { version = "1.40.0", features = ["macros", "rt-multi-thread"] }
