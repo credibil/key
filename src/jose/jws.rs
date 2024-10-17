@@ -12,11 +12,34 @@ use base64ct::{Base64UrlUnpadded, Encoding};
 use ecdsa::signature::Verifier as _;
 use std::future::Future;
 use serde::de::DeserializeOwned;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::jose::jwk::PublicKeyJwk;
 pub use crate::jose::jwt::{Header, Jwt, KeyType, Type};
 use crate::{Algorithm, Curve, Signer};
+
+/// JWS definition.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct Jws {
+    /// The stringified CID of the DAG CBOR encoded message `descriptor` property.
+    /// An empty string when JWS Unencoded Payload Option used.
+    pub payload: String,
+
+    /// JWS signatures.
+    pub signatures: Vec<Signature>,
+}
+
+/// An entry of the `signatures` array in a general JWS.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct Signature {
+    /// The base64 url-encoded JWS protected header when the JWS protected
+    /// header is non-empty. Must have `alg` and `kid` properties set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub protected: Option<String>,
+
+    /// The base64 url-encoded JWS signature.
+    pub signature: String,
+}
 
 /// Encode the provided header and claims and sign, returning a JWT in compact
 /// JWS form.

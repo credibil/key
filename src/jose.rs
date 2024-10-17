@@ -41,3 +41,6 @@ pub mod jwe;
 pub mod jwk;
 pub mod jws;
 pub mod jwt;
+
+pub use jwk::PublicKeyJwk;
+pub use jwe::EncryptionAlgorithm;

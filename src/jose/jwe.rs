@@ -345,6 +345,18 @@ pub enum EncryptionAlgorithm {
     #[default]
     #[serde(rename = "A128GCM")]
     A128Gcm,
+
+    /// XSalsa20-Poly1305
+    #[serde(rename = "XSalsa20-Poly1305")]
+    XSalsa20Poly1305,
+
+    // /// AES 256 CTR.
+    // #[serde(rename = "A256CTR")]
+    // Aes256Ctr,
+
+    // /// AES 256 GCM.
+    // #[serde(rename = "ECIES-ES256K")]
+    // EciesSecp256k1,
 }
 
 #[cfg(test)]
