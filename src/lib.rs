@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 
 pub use crate::jose::jwa::Algorithm;
 pub use crate::jose::jwk::PublicKeyJwk;
+pub use crate::jose::jws::Jws;
 pub use crate::jose::jwt::Jwt;
 
 /// The `SecOps` trait is used to provide methods needed for signing,
