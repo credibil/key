@@ -42,5 +42,65 @@ pub mod jwk;
 pub mod jws;
 pub mod jwt;
 
-pub use jwk::PublicKeyJwk;
+use std::fmt::Display;
+
 pub use jwe::EncryptionAlgorithm;
+pub use jwk::PublicKeyJwk;
+use serde::{Deserialize, Serialize};
+
+/// The JWS `typ` header parameter.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub enum Type {
+    /// JWT `typ` for Verifiable Credential.
+    #[default]
+    #[serde(rename = "jwt")]
+    Credential,
+
+    /// JWT `typ` for Verifiable Presentation.
+    #[serde(rename = "jwt")]
+    Presentation,
+
+    /// JWT `typ` for Authorization Request Object.
+    #[serde(rename = "oauth-authz-req+jwt")]
+    Request,
+
+    /// JWT `typ` for Wallet's Proof of possession of key material.
+    #[serde(rename = "openid4vci-proof+jwt")]
+    Proof,
+}
+
+impl Display for Type {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+
+/// The type of public key material for the JWT.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub enum KeyType {
+    /// Contains the key ID. If the Credential is bound to a DID, the kid refers
+    /// to a DID URL which identifies a particular key in the DID Document
+    /// that the Credential should bound to. Alternatively, may refer to a
+    /// key inside a JWKS.
+    #[serde(rename = "kid")]
+    KeyId(String),
+
+    /// Contains the key material the new Credential shall be bound to.
+    #[serde(rename = "jwk")]
+    Jwk(PublicKeyJwk),
+}
+
+impl Default for KeyType {
+    fn default() -> Self {
+        Self::KeyId(String::new())
+    }
+}
+
+/// The compression algorithm applied to the plaintext before encryption.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub enum Zip {
+    /// DEFLATE compression algorithm.
+    #[default]
+    #[serde(rename = "DEF")]
+    Deflate,
+}

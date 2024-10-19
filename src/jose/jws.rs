@@ -7,15 +7,17 @@
 //! [RFC7515]: https://www.rfc-editor.org/rfc/rfc7515
 //! [RFC7518]: https://www.rfc-editor.org/rfc/rfc7518
 
+use std::future::Future;
+
 use anyhow::{anyhow, bail};
 use base64ct::{Base64UrlUnpadded, Encoding};
 use ecdsa::signature::Verifier as _;
-use std::future::Future;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use crate::jose::jwk::PublicKeyJwk;
-pub use crate::jose::jwt::{Header, Jwt, KeyType, Type};
+pub use crate::jose::jwt::Jwt;
+pub use crate::jose::{Type, KeyType};
 use crate::{Algorithm, Curve, Signer};
 
 /// JWS definition.
@@ -39,6 +41,42 @@ pub struct Signature {
 
     /// The base64 url-encoded JWS signature.
     pub signature: String,
+}
+
+/// JWS header.
+///
+/// N.B. The following headers are not included as they are unnecessary
+/// for Vercre: `jku`, `x5u`, `x5t`, `x5t#S256`, `cty`, `crit`.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub struct Header {
+    /// Digital signature algorithm identifier as per IANA "JSON Web Signature
+    /// and Encryption Algorithms" registry.
+    pub alg: Algorithm,
+
+    /// Used to declare the media type [IANA.MediaTypes] of the JWS.
+    ///
+    /// [IANA.MediaTypes]: (http://www.iana.org/assignments/media-types)
+    pub typ: Type,
+
+    /// The key material for the public key.
+    #[serde(flatten)]
+    pub key: KeyType,
+
+    /// Contains a certificate (or certificate chain) corresponding to the key
+    /// used to sign the JWT. This element MAY be used to convey a key
+    /// attestation. In such a case, the actual key certificate will contain
+    /// attributes related to the key properties.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub x5c: Option<String>,
+
+    /// Contains an OpenID.Federation Trust Chain. This element MAY be used to
+    /// convey key attestation, metadata, metadata policies, federation
+    /// Trust Marks and any other information related to a specific
+    /// federation, if available in the chain.
+    ///
+    /// When used for signature verification, `kid` MUST be set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trust_chain: Option<String>,
 }
 
 /// Encode the provided header and claims and sign, returning a JWT in compact
