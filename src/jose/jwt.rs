@@ -10,13 +10,13 @@
 
 use serde::Serialize;
 
-use crate::jose::jws::Header;
+use crate::jose::jws::Protected;
 
 /// Represents a JWT as used for proof and credential presentation.
 #[derive(Clone, Debug, Default, Serialize, PartialEq, Eq)]
 pub struct Jwt<T> {
     /// The JWT header.
-    pub header: Header,
+    pub header: Protected,
 
     /// The JWT claims.
     pub claims: T,
