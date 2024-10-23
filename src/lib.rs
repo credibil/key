@@ -64,7 +64,7 @@ pub trait Signer: Send + Sync {
     /// rotation mean this key should only be referenced at the point of signing.
     fn public_key(&self) -> impl Future<Output = anyhow::Result<Vec<u8>>> + Send;
 
-    /// Algorithm returns the algorithm used by the signer.
+    /// Signature algorithm used by the signer.
     fn algorithm(&self) -> Algorithm;
 
     /// The verification method the verifier should use to verify the signer's

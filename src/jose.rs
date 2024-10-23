@@ -51,22 +51,18 @@ use serde::{Deserialize, Serialize};
 /// The JWS `typ` header parameter.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub enum Type {
-    /// JWT `typ` for Verifiable Credential.
+    /// General purpose JWT type.
     #[default]
     #[serde(rename = "jwt")]
-    Credential,
-
-    /// JWT `typ` for Verifiable Presentation.
-    #[serde(rename = "jwt")]
-    Presentation,
-
-    /// JWT `typ` for Authorization Request Object.
-    #[serde(rename = "oauth-authz-req+jwt")]
-    Request,
+    Jwt,
 
     /// JWT `typ` for Wallet's Proof of possession of key material.
     #[serde(rename = "openid4vci-proof+jwt")]
-    Proof,
+    Openid4VciProofJwt,
+
+    /// JWT `typ` for Authorization Request Object.
+    #[serde(rename = "oauth-authz-req+jwt")]
+    OauthAuthzReqJwt,
 }
 
 impl Display for Type {

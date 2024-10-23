@@ -8,8 +8,9 @@
 //! [RFC7518]: https://www.rfc-editor.org/rfc/rfc7518
 
 use std::future::Future;
+use std::str::FromStr;
 
-use anyhow::{anyhow, bail};
+use anyhow::{anyhow, bail, Result};
 use base64ct::{Base64UrlUnpadded, Encoding};
 use ecdsa::signature::Verifier as _;
 use serde::de::DeserializeOwned;
@@ -21,35 +22,27 @@ pub use crate::jose::jwt::Jwt;
 pub use crate::jose::{KeyType, Type};
 use crate::{Algorithm, Curve, Signer};
 
-/// Encode the provided header and claims and sign, returning a JWT in compact
-/// JWS form.
+/// Encode the provided header and claims payload and sign, returning a JWT in
+/// compact JWS form.
 ///
 /// # Errors
 /// TODO: document errors
-pub async fn encode<T>(typ: Type, claims: &T, signer: impl Signer) -> anyhow::Result<String>
+pub async fn encode<T>(typ: Type, payload: &T, signer: impl Signer) -> Result<String>
 where
     T: Serialize + Send + Sync,
 {
     tracing::debug!("encode");
 
-    // header
-    let header = Protected {
-        alg: signer.algorithm(),
-        typ,
-        key: KeyType::KeyId(signer.verification_method()),
-        ..Protected::default()
+    let jws = Jws::new(typ, payload, signer).await?;
+    let Some(signature) = jws.signatures.first() else {
+        bail!("no signature found");
     };
 
-    // payload
-    let header = Base64UrlUnpadded::encode_string(&serde_json::to_vec(&header)?);
-    let claims = Base64UrlUnpadded::encode_string(&serde_json::to_vec(claims)?);
-    let payload = format!("{header}.{claims}");
+    let header = Base64UrlUnpadded::encode_string(&serde_json::to_vec(&signature.protected)?);
+    let payload = jws.payload;
+    let signature = &signature.signature;
 
-    // sign
-    let sig = signer.try_sign(payload.as_bytes()).await?;
-    let sig_enc = Base64UrlUnpadded::encode_string(&sig);
-
-    Ok(format!("{payload}.{sig_enc}"))
+    Ok(format!("{header}.{payload}.{signature}"))
 }
 
 // TODO: allow passing verifier into this method
@@ -58,96 +51,30 @@ where
 ///
 /// # Errors
 /// TODO: document errors
-pub async fn decode<F, Fut, T>(token: &str, resolver: F) -> anyhow::Result<Jwt<T>>
+pub async fn decode<F, Fut, T>(compact_jws: &str, resolver: F) -> Result<Jwt<T>>
 where
     T: DeserializeOwned + Send,
-    F: FnOnce(String) -> Fut + Send + Sync,
-    Fut: Future<Output = anyhow::Result<PublicKeyJwk>> + Send + Sync,
+    F: Fn(String) -> Fut + Send + Sync,
+    Fut: Future<Output = Result<PublicKeyJwk>> + Send + Sync,
 {
-    // TODO: cater for different key types
-    let parts = token.split('.').collect::<Vec<&str>>();
-    if parts.len() != 3 {
-        bail!("invalid Compact JWS format");
-    }
+    tracing::debug!("decode");
 
-    // deserialize header, claims, and signature
-    let decoded = Base64UrlUnpadded::decode_vec(parts[0])
-        .map_err(|e| anyhow!("issue decoding header: {e}"))?;
-    let header: Protected =
-        serde_json::from_slice(&decoded).map_err(|e| anyhow!("issue deserializing header: {e}"))?;
-    let decoded = Base64UrlUnpadded::decode_vec(parts[1])
+    let jws: Jws = compact_jws.parse()?;
+    jws.verify(resolver).await?;
+
+    let claims = Base64UrlUnpadded::decode_vec(&jws.payload)
         .map_err(|e| anyhow!("issue decoding claims: {e}"))?;
     let claims =
-        serde_json::from_slice(&decoded).map_err(|e| anyhow!("issue deserializing claims:{e}"))?;
-    let sig = Base64UrlUnpadded::decode_vec(parts[2])
-        .map_err(|e| anyhow!("issue decoding signature: {e}"))?;
+        serde_json::from_slice(&claims).map_err(|e| anyhow!("issue deserializing claims:{e}"))?;
 
-    // check algorithm
-    if !(header.alg == Algorithm::ES256K || header.alg == Algorithm::EdDSA) {
-        bail!("'alg' is not recognised");
-    }
-
-    // verify signature
-    let KeyType::KeyId(kid) = header.key.clone() else {
-        bail!("'kid' is not set");
+    let Some(signature) = jws.signatures.first() else {
+        bail!("no signature found");
     };
 
-    // resolve 'kid' to Jwk (hint: kid will contain a DID URL for now)
-    let jwk = resolver(kid).await?;
-    jwk.verify(&format!("{}.{}", parts[0], parts[1]), &sig)?;
-
-    Ok(Jwt { header, claims })
-}
-
-impl PublicKeyJwk {
-    /// Verify the signature of the provided message using the JWK.
-    ///
-    /// # Errors
-    ///
-    /// Will return an error if the signature is invalid, the JWK is invalid, or the
-    /// algorithm is unsupported.
-    pub fn verify(&self, msg: &str, sig: &[u8]) -> anyhow::Result<()> {
-        match self.crv {
-            Curve::Es256K => self.verify_es256k(msg, sig),
-            Curve::Ed25519 => self.verify_eddsa(msg, sig),
-        }
-    }
-
-    // Verify the signature of the provided message using the ES256K algorithm.
-    fn verify_es256k(&self, msg: &str, sig: &[u8]) -> anyhow::Result<()> {
-        use ecdsa::{Signature, VerifyingKey};
-        use k256::Secp256k1;
-
-        // build verifying key
-        let y = self.y.as_ref().ok_or_else(|| anyhow!("Proof JWT 'y' is invalid"))?;
-        let mut sec1 = vec![0x04]; // uncompressed format
-        sec1.append(&mut Base64UrlUnpadded::decode_vec(&self.x)?);
-        sec1.append(&mut Base64UrlUnpadded::decode_vec(y)?);
-
-        let verifying_key = VerifyingKey::<Secp256k1>::from_sec1_bytes(&sec1)?;
-        let signature: Signature<Secp256k1> = Signature::from_slice(sig)?;
-        let normalised = signature.normalize_s().unwrap_or(signature);
-
-        Ok(verifying_key.verify(msg.as_bytes(), &normalised)?)
-    }
-
-    // Verify the signature of the provided message using the EdDSA algorithm.
-    fn verify_eddsa(&self, msg: &str, sig_bytes: &[u8]) -> anyhow::Result<()> {
-        use ed25519_dalek::{Signature, VerifyingKey};
-
-        // build verifying key
-        let x_bytes = Base64UrlUnpadded::decode_vec(&self.x)
-            .map_err(|e| anyhow!("unable to base64 decode proof JWK 'x': {e}"))?;
-        let bytes = &x_bytes.try_into().map_err(|_| anyhow!("invalid public key length"))?;
-        let verifying_key = VerifyingKey::from_bytes(bytes)
-            .map_err(|e| anyhow!("unable to build verifying key: {e}"))?;
-        let signature = Signature::from_slice(sig_bytes)
-            .map_err(|e| anyhow!("unable to build signature: {e}"))?;
-
-        verifying_key
-            .verify(msg.as_bytes(), &signature)
-            .map_err(|e| anyhow!("unable to verify signature: {e}"))
-    }
+    Ok(Jwt {
+        header: signature.protected.clone(),
+        claims,
+    })
 }
 
 /// JWS definition.
@@ -162,11 +89,39 @@ pub struct Jws {
 }
 
 impl Jws {
+    /// Create a signed JWS JSON object for the given payload.
+    ///
+    /// # Errors
+    /// TODO: document errors
+    pub async fn new<T>(typ: Type, payload: &T, signer: impl Signer) -> Result<Self>
+    where
+        T: Serialize + Send + Sync,
+    {
+        let protected = Protected {
+            alg: signer.algorithm(),
+            typ,
+            key: KeyType::KeyId(signer.verification_method()),
+            ..Protected::default()
+        };
+
+        let header = Base64UrlUnpadded::encode_string(&serde_json::to_vec(&protected)?);
+        let payload = Base64UrlUnpadded::encode_string(&serde_json::to_vec(payload)?);
+        let sig = signer.try_sign(format!("{header}.{payload}").as_bytes()).await?;
+
+        Ok(Jws {
+            payload,
+            signatures: vec![Signature {
+                protected,
+                signature: Base64UrlUnpadded::encode_string(&sig),
+            }],
+        })
+    }
+
     /// Verify JWS signatures.
-    pub async fn verify<F, Fut>(&self, resolver: F) -> anyhow::Result<()>
+    pub async fn verify<F, Fut>(&self, resolver: F) -> Result<()>
     where
         F: Fn(String) -> Fut + Send + Sync,
-        Fut: Future<Output = anyhow::Result<PublicKeyJwk>> + Send + Sync,
+        Fut: Future<Output = Result<PublicKeyJwk>> + Send + Sync,
     {
         for signature in &self.signatures {
             let header = &signature.protected;
@@ -175,16 +130,40 @@ impl Jws {
             };
 
             // dereference `kid` to JWK matching key ID
+            let header = Base64UrlUnpadded::encode_string(&serde_json::to_vec(&header)?);
+            let sig = Base64UrlUnpadded::decode_vec(&signature.signature)?;
+
             let public_jwk = resolver(kid.to_owned()).await?;
-
-            let base64 = Base64UrlUnpadded::encode_string(&serde_json::to_vec(&header)?);
-            let payload = format!("{base64}.{}", self.payload);
-            let signature = Base64UrlUnpadded::decode_vec(&signature.signature)?;
-
-            public_jwk.verify(&payload, &signature)?;
+            public_jwk.verify(&format!("{header}.{}", self.payload), &sig)?;
         }
 
         Ok(())
+    }
+}
+
+impl FromStr for Jws {
+    type Err = anyhow::Error;
+
+    // TODO: cater for different key types
+    fn from_str(s: &str) -> Result<Self> {
+        let parts = s.split('.').collect::<Vec<&str>>();
+        if parts.len() != 3 {
+            bail!("invalid Compact JWS format");
+        }
+
+        // deserialize header
+        let decoded = Base64UrlUnpadded::decode_vec(parts[0])
+            .map_err(|e| anyhow!("issue decoding header: {e}"))?;
+        let protected = serde_json::from_slice(&decoded)
+            .map_err(|e| anyhow!("issue deserializing header: {e}"))?;
+
+        Ok(Jws {
+            payload: parts[1].to_string(),
+            signatures: vec![Signature {
+                protected,
+                signature: parts[2].to_string(),
+            }],
+        })
     }
 }
 
@@ -290,5 +269,56 @@ impl Protected {
             KeyType::Jwk(jwk) => Some(jwk),
             _ => None,
         }
+    }
+}
+
+impl PublicKeyJwk {
+    /// Verify the signature of the provided message using the JWK.
+    ///
+    /// # Errors
+    ///
+    /// Will return an error if the signature is invalid, the JWK is invalid, or the
+    /// algorithm is unsupported.
+    pub fn verify(&self, msg: &str, sig: &[u8]) -> Result<()> {
+        match self.crv {
+            Curve::Es256K => self.verify_es256k(msg, sig),
+            Curve::Ed25519 => self.verify_eddsa(msg, sig),
+        }
+    }
+
+    // Verify the signature of the provided message using the ES256K algorithm.
+    fn verify_es256k(&self, msg: &str, sig: &[u8]) -> Result<()> {
+        use ecdsa::{Signature, VerifyingKey};
+        use k256::Secp256k1;
+
+        // build verifying key
+        let y = self.y.as_ref().ok_or_else(|| anyhow!("Proof JWT 'y' is invalid"))?;
+        let mut sec1 = vec![0x04]; // uncompressed format
+        sec1.append(&mut Base64UrlUnpadded::decode_vec(&self.x)?);
+        sec1.append(&mut Base64UrlUnpadded::decode_vec(y)?);
+
+        let verifying_key = VerifyingKey::<Secp256k1>::from_sec1_bytes(&sec1)?;
+        let signature: Signature<Secp256k1> = Signature::from_slice(sig)?;
+        let normalised = signature.normalize_s().unwrap_or(signature);
+
+        Ok(verifying_key.verify(msg.as_bytes(), &normalised)?)
+    }
+
+    // Verify the signature of the provided message using the EdDSA algorithm.
+    fn verify_eddsa(&self, msg: &str, sig_bytes: &[u8]) -> Result<()> {
+        use ed25519_dalek::{Signature, VerifyingKey};
+
+        // build verifying key
+        let x_bytes = Base64UrlUnpadded::decode_vec(&self.x)
+            .map_err(|e| anyhow!("unable to base64 decode proof JWK 'x': {e}"))?;
+        let bytes = &x_bytes.try_into().map_err(|_| anyhow!("invalid public key length"))?;
+        let verifying_key = VerifyingKey::from_bytes(bytes)
+            .map_err(|e| anyhow!("unable to build verifying key: {e}"))?;
+        let signature = Signature::from_slice(sig_bytes)
+            .map_err(|e| anyhow!("unable to build signature: {e}"))?;
+
+        verifying_key
+            .verify(msg.as_bytes(), &signature)
+            .map_err(|e| anyhow!("unable to verify signature: {e}"))
     }
 }
