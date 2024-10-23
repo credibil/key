@@ -27,7 +27,7 @@ use crate::{Algorithm, Curve, Signer};
 ///
 /// # Errors
 /// TODO: document errors
-pub async fn encode<T>(typ: Type, payload: &T, signer: impl Signer) -> Result<String>
+pub async fn encode<T>(typ: Type, payload: &T, signer: &impl Signer) -> Result<String>
 where
     T: Serialize + Send + Sync,
 {
@@ -93,7 +93,7 @@ impl Jws {
     ///
     /// # Errors
     /// TODO: document errors
-    pub async fn new<T>(typ: Type, payload: &T, signer: impl Signer) -> Result<Self>
+    pub async fn new<T>(typ: Type, payload: &T, signer: &impl Signer) -> Result<Self>
     where
         T: Serialize + Send + Sync,
     {

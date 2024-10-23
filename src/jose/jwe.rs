@@ -61,7 +61,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::jose::jwk::PublicKeyJwk;
-use crate::{Curve, Decryptor, Encryptor, KeyType};
+use crate::{Cipher, Curve, KeyType};
 
 /// Encrypt plaintext and return a JWE.
 ///
@@ -72,7 +72,7 @@ use crate::{Curve, Decryptor, Encryptor, KeyType};
 ///
 /// Returns an error if the plaintext cannot be encrypted.
 pub async fn encrypt<T: Serialize + Send>(
-    plaintext: T, recipient_key: &[u8; 32], encryptor: &impl Encryptor,
+    plaintext: T, recipient_key: &[u8; 32], cipher: &impl Cipher,
 ) -> anyhow::Result<String> {
     // 1. Key Management Mode determines the Content Encryption Key (CEK)
     //     - alg: "ECDH-ES" (Diffie-Hellman Ephemeral Static key agreement using
@@ -85,7 +85,7 @@ pub async fn encrypt<T: Serialize + Send>(
     // 3. Use Key Agreement Algorithm (ECDH) to compute a shared secret to wrap the
     //    CEK.
     // 4. Encrypt the CEK and set as the JWE Encrypted Key.
-    let encrypted_cek = encryptor.encrypt(&cek, recipient_key).await?;
+    let encrypted_cek = cipher.encrypt(&cek, recipient_key).await?;
 
     // 9. Generate a random JWE Initialization Vector (nonce) of the correct size
     //    for the content encryption algorithm (A128GCM).
@@ -100,7 +100,7 @@ pub async fn encrypt<T: Serialize + Send>(
         epk: PublicKeyJwk {
             kty: KeyType::Okp,
             crv: Curve::Ed25519,
-            x: Base64::encode_string(&encryptor.public_key()),
+            x: Base64::encode_string(&cipher.ephemeral_public_key()),
             ..PublicKeyJwk::default()
         },
     };
@@ -143,7 +143,7 @@ pub async fn encrypt<T: Serialize + Send>(
 ///
 /// Returns an error if the JWE cannot be decrypted.
 pub async fn decrypt<T: DeserializeOwned>(
-    compact_jwe: &str, decryptor: &impl Decryptor,
+    compact_jwe: &str, cipher: &impl Cipher,
 ) -> anyhow::Result<T> {
     // 1. Parse the JWE to extract the serialized values of it's components.
     // 3. Verify the JWE Protected Header.
@@ -171,7 +171,7 @@ pub async fn decrypt<T: DeserializeOwned>(
         .map_err(|e| anyhow!("issue decoding sender public key `x`: {e}"))?;
     let sender_key: &[u8; crypto_box::KEY_SIZE] = sender_key.as_slice().try_into()?;
 
-    let cek = decryptor.decrypt(&encrypted_cek, sender_key).await?;
+    let cek = cipher.decrypt(&encrypted_cek, sender_key).await?;
 
     // 12. Record whether the CEK could be successfully determined for this
     //     recipient.
@@ -349,7 +349,6 @@ pub enum EncryptionAlgorithm {
     /// XSalsa20-Poly1305
     #[serde(rename = "XSalsa20-Poly1305")]
     XSalsa20Poly1305,
-
     // /// AES 256 CTR.
     // #[serde(rename = "A256CTR")]
     // Aes256Ctr,
@@ -397,7 +396,7 @@ mod test {
         }
     }
 
-    impl Encryptor for KeyStore {
+    impl Cipher for KeyStore {
         async fn encrypt(
             &self, plaintext: &[u8], recipient_public_key: &[u8],
         ) -> anyhow::Result<Vec<u8>> {
@@ -413,12 +412,10 @@ mod test {
             Ok(ciphertext)
         }
 
-        fn public_key(&self) -> Vec<u8> {
+        fn ephemeral_public_key(&self) -> Vec<u8> {
             x25519_dalek::PublicKey::from(&self.x25519_secret).as_bytes().to_vec()
         }
-    }
 
-    impl Decryptor for KeyStore {
         async fn decrypt(
             &self, ciphertext: &[u8], sender_public_key: &[u8],
         ) -> anyhow::Result<Vec<u8>> {

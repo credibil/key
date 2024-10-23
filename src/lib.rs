@@ -23,29 +23,26 @@ pub use crate::jose::jwt::Jwt;
 /// Implementers of this trait are expected to provide the necessary
 /// cryptographic functionality to support Verifiable Credential issuance and
 /// Verifiable Presentation submissions.
-pub trait SecOps: Send + Sync {
-    /// Signer provides digital signing-related funtionality.
-    /// The `identifier` parameter is one of `credential_issuer` or
-    /// `verifier_id`.
+pub trait KeyOps: Send + Sync {
+    /// Signer provides digital signing function.
+    ///
+    /// The `controller` parameter uniquely identifies the controller of the
+    /// private key used in the signing operation.
     ///
     /// # Errors
     ///
     /// Returns an error if the signer cannot be created.
-    fn signer(&self, identifier: &str) -> anyhow::Result<impl Signer>;
+    fn signer(&self, controller: &str) -> anyhow::Result<impl Signer>;
 
-    /// Encryptor provides data encryption functionality.
+    /// Cipher provides data encryption/decryption functionality.
+    ///
+    /// The `controller` parameter uniquely identifies the controller of the
+    /// private key used in the signing operation.
     ///
     /// # Errors
     ///
     /// Returns an error if the encryptor cannot be created.
-    fn encryptor(&self, identifier: &str) -> anyhow::Result<impl Encryptor>;
-
-    /// Decryptor provides data decryption functionality.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the decryptor cannot be created.
-    fn decryptor(&self, identifier: &str) -> anyhow::Result<impl Decryptor>;
+    fn cipher(&self, controller: &str) -> anyhow::Result<impl Cipher>;
 }
 
 /// Signer is used by implementers to provide signing functionality for
@@ -72,21 +69,18 @@ pub trait Signer: Send + Sync {
     fn verification_method(&self) -> String;
 }
 
-/// Encryptor is used by implementers to provide encryption functionality for
-/// Verifiable Credential issuance and Verifiable Presentation submissions.
-pub trait Encryptor: Send + Sync {
+/// Encryptor is used by implementers to provide encryption/decryption
+/// functionality for Verifiable Credential issuance and Verifiable Presentation
+/// submissions.
+pub trait Cipher: Send + Sync {
     /// Encrypt the plaintext using the recipient's public key.
     fn encrypt(
         &self, plaintext: &[u8], recipient_public_key: &[u8],
     ) -> impl Future<Output = anyhow::Result<Vec<u8>>> + Send;
 
-    /// The public key of the encryptor.
-    fn public_key(&self) -> Vec<u8>;
-}
+    /// Encryptor's ephemeral public key.
+    fn ephemeral_public_key(&self) -> Vec<u8>;
 
-/// Decryptor is used by implementers to provide decryption functionality for
-/// Verifiable Credential issuance and Verifiable Presentation submissions.
-pub trait Decryptor: Send + Sync {
     /// Decrypt the ciphertext using the sender's public key.
     fn decrypt(
         &self, ciphertext: &[u8], sender_public_key: &[u8],
