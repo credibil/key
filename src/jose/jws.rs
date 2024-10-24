@@ -14,7 +14,6 @@ use anyhow::{anyhow, bail, Result};
 use base64ct::{Base64UrlUnpadded, Encoding};
 use ecdsa::signature::Verifier as _;
 use serde::de::DeserializeOwned;
-use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 
 use crate::jose::jwk::PublicKeyJwk;
@@ -168,61 +167,22 @@ impl FromStr for Jws {
 }
 
 /// An entry of the `signatures` array in a general JWS.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Signature {
     /// The base64 url-encoded JWS protected header when the JWS protected
     /// header is non-empty. Must have `alg` and `kid` properties set.
+    #[serde(with = "base64url")]
     pub protected: Protected,
 
     /// The base64 url-encoded JWS signature.
     pub signature: String,
 }
 
-impl Serialize for Signature {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::ser::Serializer,
-    {
-        // base64url encode header
-        let bytes = serde_json::to_vec(&self.protected).map_err(serde::ser::Error::custom)?;
-        let protected = Base64UrlUnpadded::encode_string(&bytes);
-
-        // serialize the payload
-        let mut state = serializer.serialize_struct("Signature", 2)?;
-        state.serialize_field("protected", &protected)?;
-        state.serialize_field("signature", &self.signature)?;
-        state.end()
-    }
-}
-
-impl<'de> Deserialize<'de> for Signature {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::de::Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        struct Inner {
-            protected: String,
-            signature: String,
-        }
-
-        let inner = Inner::deserialize(deserializer)?;
-        let protected =
-            Base64UrlUnpadded::decode_vec(&inner.protected).map_err(serde::de::Error::custom)?;
-        let protected = serde_json::from_slice(&protected).map_err(serde::de::Error::custom)?;
-
-        Ok(Signature {
-            protected,
-            signature: inner.signature,
-        })
-    }
-}
-
 /// JWS header.
 ///
 /// N.B. The following headers are not included as they are unnecessary
 /// for Vercre: `jku`, `x5u`, `x5t`, `x5t#S256`, `cty`, `crit`.
-#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Protected {
     /// Digital signature algorithm identifier as per IANA "JSON Web Signature
     /// and Encryption Algorithms" registry.
@@ -320,5 +280,28 @@ impl PublicKeyJwk {
         verifying_key
             .verify(msg.as_bytes(), &signature)
             .map_err(|e| anyhow!("unable to verify signature: {e}"))
+    }
+}
+
+mod base64url {
+    use super::*;
+
+    pub fn serialize<T, S>(value: T, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        T: Serialize,
+        S: serde::ser::Serializer,
+    {
+        let bytes = serde_json::to_vec(&value).map_err(serde::ser::Error::custom)?;
+        serializer.serialize_str(&Base64UrlUnpadded::encode_string(&bytes))
+    }
+
+    pub fn deserialize<'de, T, D>(deserializer: D) -> Result<T, D::Error>
+    where
+        T: DeserializeOwned,
+        D: serde::de::Deserializer<'de>,
+    {
+        let encoded = String::deserialize(deserializer)?;
+        let bytes = Base64UrlUnpadded::decode_vec(&encoded).map_err(serde::de::Error::custom)?;
+        serde_json::from_slice(&bytes).map_err(serde::de::Error::custom)
     }
 }

@@ -44,8 +44,9 @@ pub mod jwt;
 
 use std::fmt::Display;
 
-pub use jwe::EncryptionAlgorithm;
+pub use jwe::{EncryptionAlgorithm, Jwe};
 pub use jwk::PublicKeyJwk;
+pub use jws::Jws;
 use serde::{Deserialize, Serialize};
 
 /// The JWS `typ` header parameter.
