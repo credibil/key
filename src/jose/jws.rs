@@ -283,6 +283,70 @@ impl PublicKeyJwk {
     }
 }
 
+/// Options to use when creating a permission grant.
+#[derive(Clone, Debug, Default)]
+pub struct JwsBuilder<T>
+where
+    T: Serialize + Default + Send + Sync,
+{
+    jwt_type: Type,
+    payload: T,
+}
+
+/// Builder for creating a permission grant.
+impl<T> JwsBuilder<T>
+where
+    T: Serialize + Default + Send + Sync,
+{
+    /// Returns a new [`SubscribeBuilder`]
+    #[must_use]
+    pub fn new() -> Self {
+        // set defaults
+        Self {
+            jwt_type: Type::Jwt,
+            ..Self::default()
+        }
+    }
+
+    /// Specify JWT header `typ`.
+    #[must_use]
+    pub fn jwt_type(mut self, jwt_type: Type) -> Self {
+        self.jwt_type = jwt_type;
+        self
+    }
+
+    /// Specify the payload to be signed.
+    pub fn payload(mut self, payload: T) -> Self {
+        self.payload = payload;
+        self
+    }
+
+    /// Generate the JWS.
+    ///
+    /// # Errors
+    /// TODO: Add errors
+    pub async fn build(self, signer: &impl Signer) -> Result<Jws> {
+        let protected = Protected {
+            alg: signer.algorithm(),
+            typ: self.jwt_type,
+            key: KeyType::KeyId(signer.verification_method()),
+            ..Protected::default()
+        };
+
+        let header = Base64UrlUnpadded::encode_string(&serde_json::to_vec(&protected)?);
+        let payload = Base64UrlUnpadded::encode_string(&serde_json::to_vec(&self.payload)?);
+        let sig = signer.try_sign(format!("{header}.{payload}").as_bytes()).await?;
+
+        Ok(Jws {
+            payload,
+            signatures: vec![Signature {
+                protected,
+                signature: Base64UrlUnpadded::encode_string(&sig),
+            }],
+        })
+    }
+}
+
 mod base64url {
     use super::*;
 

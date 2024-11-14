@@ -349,6 +349,7 @@ pub enum EncryptionAlgorithm {
     /// XSalsa20-Poly1305
     #[serde(rename = "XSalsa20-Poly1305")]
     XSalsa20Poly1305,
+    //
     // /// AES 256 CTR.
     // #[serde(rename = "A256CTR")]
     // Aes256Ctr,
