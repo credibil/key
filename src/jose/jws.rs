@@ -107,7 +107,7 @@ impl Jws {
         let payload = Base64UrlUnpadded::encode_string(&serde_json::to_vec(payload)?);
         let sig = signer.try_sign(format!("{header}.{payload}").as_bytes()).await?;
 
-        Ok(Jws {
+        Ok(Self {
             payload,
             signatures: vec![Signature {
                 protected,
@@ -117,6 +117,9 @@ impl Jws {
     }
 
     /// Verify JWS signatures.
+    ///
+    /// # Errors
+    /// TODO: document errors
     pub async fn verify<F, Fut>(&self, resolver: F) -> Result<()>
     where
         F: Fn(String) -> Fut + Send + Sync,
@@ -156,7 +159,7 @@ impl FromStr for Jws {
         let protected = serde_json::from_slice(&decoded)
             .map_err(|e| anyhow!("issue deserializing header: {e}"))?;
 
-        Ok(Jws {
+        Ok(Self {
             payload: parts[1].to_string(),
             signatures: vec![Signature {
                 protected,
@@ -216,18 +219,20 @@ pub struct Protected {
 
 impl Protected {
     /// Returns the `kid` if the key type is `KeyId`.
+    #[must_use]
     pub fn kid(&self) -> Option<&str> {
         match &self.key {
             KeyType::KeyId(kid) => Some(kid),
-            _ => None,
+            KeyType::Jwk(_) => None,
         }
     }
 
     /// Returns the `kid` if the key type is `KeyId`.
-    pub fn jwk(&self) -> Option<&PublicKeyJwk> {
+    #[must_use]
+    pub const fn jwk(&self) -> Option<&PublicKeyJwk> {
         match &self.key {
             KeyType::Jwk(jwk) => Some(jwk),
-            _ => None,
+            KeyType::KeyId(_) => None,
         }
     }
 }
@@ -310,12 +315,13 @@ where
 
     /// Specify JWT header `typ`.
     #[must_use]
-    pub fn jwt_type(mut self, jwt_type: Type) -> Self {
+    pub const fn jwt_type(mut self, jwt_type: Type) -> Self {
         self.jwt_type = jwt_type;
         self
     }
 
     /// Specify the payload to be signed.
+    #[must_use]
     pub fn payload(mut self, payload: T) -> Self {
         self.payload = payload;
         self
@@ -348,7 +354,9 @@ where
 }
 
 mod base64url {
-    use super::*;
+    use base64ct::{Base64UrlUnpadded, Encoding};
+    use serde::de::DeserializeOwned;
+    use serde::{Deserialize, Serialize};
 
     pub fn serialize<T, S>(value: T, serializer: S) -> Result<S::Ok, S::Error>
     where
