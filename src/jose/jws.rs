@@ -96,10 +96,11 @@ impl Jws {
     where
         T: Serialize + Send + Sync,
     {
+        let verification_method = signer.verification_method().await?;
         let protected = Protected {
             alg: signer.algorithm(),
             typ,
-            key: KeyType::KeyId(signer.verification_method()),
+            key: KeyType::KeyId(verification_method),
             ..Protected::default()
         };
 
@@ -332,10 +333,11 @@ where
     /// # Errors
     /// TODO: Add errors
     pub async fn build(self, signer: &impl Signer) -> Result<Jws> {
+        let verification_method = signer.verification_method().await?;
         let protected = Protected {
             alg: signer.algorithm(),
             typ: self.jwt_type,
-            key: KeyType::KeyId(signer.verification_method()),
+            key: KeyType::KeyId(verification_method),
             ..Protected::default()
         };
 

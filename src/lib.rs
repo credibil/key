@@ -66,7 +66,10 @@ pub trait Signer: Send + Sync {
 
     /// The verification method the verifier should use to verify the signer's
     /// signature. This is typically a DID URL + # + verification key ID.
-    fn verification_method(&self) -> String;
+    ///
+    /// Async and fallible because the client may need to access key information
+    /// to construct the method reference.
+    fn verification_method(&self) -> impl Future<Output = anyhow::Result<String>> + Send;
 }
 
 /// Encryptor is used by implementers to provide encryption/decryption
