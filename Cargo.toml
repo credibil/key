@@ -28,7 +28,7 @@ nursery = "warn"
 
 [dependencies]
 aes-gcm = "0.10.3"
-anyhow = "1.0.91"
+anyhow = "1.0.93"
 base64ct = { version = "1.6.0", features = ["std"] }
 ciborium = "0.2.2"
 coset = "0.3.8"
@@ -36,12 +36,12 @@ crypto_box = { version = "0.9.1", features = ["chacha20", "heapless"] }
 ecdsa = "0.16.9"
 ed25519-dalek = { version = "2.1.1", features = ["rand_core"] }
 k256 = "0.13.4"
-serde = { version = "1.0.213", features = ["derive"] }
-serde_json = { version = "1.0.132", features = ["alloc"] }
+serde = { version = "1.0.215", features = ["derive"] }
+serde_json = { version = "1.0.133", features = ["alloc"] }
 tracing = "0.1.40"
 x25519-dalek = { version = "2.0.1", features = ["static_secrets"] }
 
 [dev-dependencies]
 hex = "0.4.3"
 signature = "2.2.0"
-tokio = { version = "1.41.0", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.41.1", features = ["macros", "rt-multi-thread"] }
