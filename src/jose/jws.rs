@@ -53,8 +53,8 @@ where
 pub async fn decode<F, Fut, T>(compact_jws: &str, resolver: F) -> Result<Jwt<T>>
 where
     T: DeserializeOwned + Send,
-    F: Fn(String) -> Fut + Send + Sync,
-    Fut: Future<Output = Result<PublicKeyJwk>> + Send + Sync,
+    F: Fn(String) -> Fut + Send,
+    Fut: Future<Output = Result<PublicKeyJwk>> + Send,
 {
     tracing::debug!("decode");
 
@@ -123,8 +123,8 @@ impl Jws {
     /// TODO: document errors
     pub async fn verify<F, Fut>(&self, resolver: F) -> Result<()>
     where
-        F: Fn(String) -> Fut + Send + Sync,
-        Fut: Future<Output = Result<PublicKeyJwk>> + Send + Sync,
+        F: Fn(String) -> Fut + Send,
+        Fut: Future<Output = Result<PublicKeyJwk>> + Send,
     {
         for signature in &self.signatures {
             let header = &signature.protected;
