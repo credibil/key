@@ -76,17 +76,13 @@ pub trait Signer: Send + Sync {
 /// functionality for Verifiable Credential issuance and Verifiable Presentation
 /// submissions.
 pub trait Cipher: Send + Sync {
-    /// Encrypt the plaintext using the recipient's public key.
-    fn encrypt(
-        &self, plaintext: &[u8], recipient_public_key: &[u8],
-    ) -> impl Future<Output = anyhow::Result<Vec<u8>>> + Send;
+    /// Recipient's public key.
+    fn public_key(&self) -> Vec<u8>;
 
-    /// Encryptor's ephemeral public key.
-    fn ephemeral_public_key(&self) -> Vec<u8>;
-
-    /// Decrypt the ciphertext using the sender's public key.
-    fn decrypt(
-        &self, ciphertext: &[u8], sender_public_key: &[u8],
+    /// Generate a Diffie-Hellman shared secret using the recipient's private
+    /// key and sender's public key.
+    fn diffie_hellman(
+        &self, sender_public: &[u8],
     ) -> impl Future<Output = anyhow::Result<Vec<u8>>> + Send;
 }
 

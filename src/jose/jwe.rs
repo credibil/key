@@ -22,13 +22,13 @@
 
 //! # Example
 //!
-//! Reference JSON for ECDH/A128GCM from specification
+//! Reference JSON for ECDH/A256GCM from specification
 //! (<https://www.rfc-editor.org/rfc/rfc7518#appendix-C>):
 //!
 //!```json
 //! {
 //!     "alg":"ECDH-ES",
-//!     "enc":"A128GCM",
+//!     "enc":"A256GCM",
 //!     "apu":"QWxpY2U",
 //!     "apv":"Qm9i",
 //!     "epk": {
@@ -51,142 +51,110 @@ use std::fmt::{self, Display};
 use std::str::FromStr;
 
 use aes_gcm::aead::KeyInit; // heapless,
-use aes_gcm::{AeadInPlace, Aes128Gcm, Key, Nonce};
-use anyhow::anyhow;
-use base64ct::{Base64UrlUnpadded as Base64, Encoding};
-use crypto_box::aead::{AeadCore, OsRng};
-use crypto_box::Tag;
+use aes_gcm::{AeadCore, AeadInPlace, Aes256Gcm, Key, Nonce, Tag};
+use anyhow::{anyhow, Result};
+use base64ct::{Base64UrlUnpadded, Encoding};
+use rand::rngs::OsRng;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use x25519_dalek::{EphemeralSecret, PublicKey};
 
 use crate::jose::jwk::PublicKeyJwk;
 use crate::{Cipher, Curve, KeyType};
 
 /// Encrypt plaintext and return a JWE.
 ///
-/// N.B. We currently only support ECDH-ES key agreement and A128GCM
+/// N.B. We currently only support ECDH-ES key agreement and A256GCM
 /// content encryption.
 ///
 /// # Errors
 ///
 /// Returns an error if the plaintext cannot be encrypted.
-pub async fn encrypt<T: Serialize + Send>(
-    plaintext: T, recipient_key: &[u8; 32], cipher: &impl Cipher,
-) -> anyhow::Result<String> {
-    // 1. Key Management Mode determines the Content Encryption Key (CEK)
-    //     - alg: "ECDH-ES" (Diffie-Hellman Ephemeral Static key agreement using
-    //       Concat KDF)
-    //     - enc: "A128GCM" (128-bit AES-GCM)
+pub fn encrypt<T: Serialize + Send>(plaintext: &T, recipient_public: &[u8]) -> Result<Jwe> {
+    // generate a CEK to encrypt payload
+    let ephemeral_secret = EphemeralSecret::random_from_rng(rand::thread_rng());
+    let ephemeral_public = PublicKey::from(&ephemeral_secret);
 
-    // 2. Generate a CEK — Content Encryption Mode — to encrypt payload
-    let cek = Aes128Gcm::generate_key(&mut OsRng);
+    // ...when using Direct Key Agreement, the CEK is the DH shared secret
+    let recipient_key: [u8; 32] = recipient_public.try_into()?;
+    let recipient_public = PublicKey::from(recipient_key);
+    let cek = ephemeral_secret.diffie_hellman(&recipient_public);
 
-    // 3. Use Key Agreement Algorithm (ECDH) to compute a shared secret to wrap the
-    //    CEK.
-    // 4. Encrypt the CEK and set as the JWE Encrypted Key.
-    let encrypted_cek = cipher.encrypt(&cek, recipient_key).await?;
+    // ...when using direct, the JWE Encrypted Key is an empty octet sequence
+    let encrypted_key = Base64UrlUnpadded::encode_string(&[0; 32]);
 
-    // 9. Generate a random JWE Initialization Vector (nonce) of the correct size
-    //    for the content encryption algorithm (A128GCM).
-    let iv = Aes128Gcm::generate_nonce(&mut OsRng);
-
-    // 12. Create the JSON Header object (JWE Protected Header).
-    let header = Header {
+    // JWE Protected Header
+    let protected = Header {
         alg: CekAlgorithm::EcdhEs,
-        enc: EncryptionAlgorithm::A128Gcm,
-        apu: Base64::encode_string(b"Alice"),
-        apv: Base64::encode_string(b"Bob"),
+        enc: EncryptionAlgorithm::A256Gcm,
+        // FIXME: set these values to something meaningful
+        apu: Base64UrlUnpadded::encode_string(b"Alice"),
+        apv: Base64UrlUnpadded::encode_string(b"Bob"),
         epk: PublicKeyJwk {
             kty: KeyType::Okp,
             crv: Curve::Ed25519,
-            x: Base64::encode_string(&cipher.ephemeral_public_key()),
+            x: Base64UrlUnpadded::encode_string(ephemeral_public.as_bytes()),
             ..PublicKeyJwk::default()
         },
     };
 
-    // 14. Set the Additional Authenticated Data (AAD) encryption parameter to
-    //     Encoded Protected Header (step 13)
-    let aad = &Base64::encode_string(&serde_json::to_vec(&header)?);
+    // generate initialization vector (nonce)for content encryption
+    let iv = Aes256Gcm::generate_nonce(&mut OsRng);
 
-    // 15. Encrypt plaintext using the CEK, the JWE Initialization Vector, and the
-    //     Additional Authenticated Data using the content encryption algorithm to
-    //     create the JWE Ciphertext value and the JWE Authentication Tag (which is
-    //     the Authentication Tag output from the encryption operation).
-    let mut buffer = serde_json::to_vec(&plaintext)?;
+    // JWE Additional Authenticated Data is the encoded JWE Protected Header
+    let aad = &Base64UrlUnpadded::encode_string(&serde_json::to_vec(&protected)?);
 
-    let tag = Aes128Gcm::new(&cek)
+    // encrypt plaintext using the CEK, initialization vector, and AAD
+    // - generates ciphertext and a JWE Authentication Tag
+    let mut buffer = serde_json::to_vec(plaintext)?;
+    let key = Key::<Aes256Gcm>::from_slice(cek.as_bytes());
+    let tag = Aes256Gcm::new(key)
         .encrypt_in_place_detached(&iv, aad.as_bytes(), &mut buffer)
         .map_err(|e| anyhow!("issue encrypting: {e}"))?;
 
-    let jwe = Jwe {
-        protected: header,
-        encrypted_key: Base64::encode_string(&encrypted_cek),
-        iv: Base64::encode_string(&iv),
-        ciphertext: Base64::encode_string(&buffer),
-        tag: Base64::encode_string(&tag),
+    Ok(Jwe {
+        protected,
+        encrypted_key,
+        iv: Base64UrlUnpadded::encode_string(&iv),
+        ciphertext: Base64UrlUnpadded::encode_string(&buffer),
+        tag: Base64UrlUnpadded::encode_string(&tag),
         ..Jwe::default()
-    };
-
-    // 19. Return Compact Serialization of the JWE
-    Ok(jwe.to_string())
+    })
 }
-
-// use aes_gcm::aead::heapless::Vec;
-// use aes_gcm::AesGcm;
 
 /// Decrypt the JWE and return the plaintext.
 ///
-/// N.B. We currently only support ECDH-ES key agreement and A128GCM
+/// N.B. We currently only support ECDH-ES key agreement and A256GCM
 ///
 /// # Errors
 ///
 /// Returns an error if the JWE cannot be decrypted.
-pub async fn decrypt<T: DeserializeOwned>(
-    compact_jwe: &str, cipher: &impl Cipher,
-) -> anyhow::Result<T> {
-    // 1. Parse the JWE to extract the serialized values of it's components.
-    // 3. Verify the JWE Protected Header.
-    // 4. If using JWE Compact Serialization, let JOSE Header = JWE Protected
-    //    Header.
-    let jwe = Jwe::from_str(compact_jwe)?;
-
-    // 2. Base64url decode the JWE Protected Header, JWE Encrypted Key, JWE
-    //    Initialization Vector, JWE Ciphertext, JWE Authentication Tag, and JWE
-    //    AAD,
-    let encrypted_cek = Base64::decode_vec(&jwe.encrypted_key)
-        .map_err(|e| anyhow!("issue decoding `encrypted_key`: {e}"))?;
-    let iv = Base64::decode_vec(&jwe.iv).map_err(|e| anyhow!("issue decoding `iv`: {e}"))?;
-    let ciphertext = Base64::decode_vec(&jwe.ciphertext)
-        .map_err(|e| anyhow!("issue decoding `ciphertext`: {e}"))?;
-    let tag = Base64::decode_vec(&jwe.tag).map_err(|e| anyhow!("issue decoding `tag`: {e}"))?;
-
-    // 6. Determine the Key Management Mode specified by "alg"
-    // N.B. not necessary as only ECDH-ES is supported
-
-    // 9. When Key Wrapping, Key Encryption, or Key Agreement with Key Wrapping are
-    //    employed, decrypt the JWE Encrypted Key to produce the CEK.
-    // TODO: check kty and crv (at present we assume Ed25519)
-    let sender_key = Base64::decode_vec(&jwe.protected.epk.x)
+pub async fn decrypt<T: DeserializeOwned>(jwe: &Jwe, cipher: &impl Cipher) -> Result<T> {
+    // get sender's ephemeral public key (used in key agreement)
+    let sender_public = Base64UrlUnpadded::decode_vec(&jwe.protected.epk.x)
         .map_err(|e| anyhow!("issue decoding sender public key `x`: {e}"))?;
-    let sender_key: &[u8; crypto_box::KEY_SIZE] = sender_key.as_slice().try_into()?;
+    let sender_key: [u8; 32] = sender_public.as_slice().try_into()?;
+    let sender_public = x25519_dalek::PublicKey::from(sender_key);
 
-    let cek = cipher.decrypt(&encrypted_cek, sender_key).await?;
+    // compute CEK using recipient's private key and sender's public key
+    let cek = cipher.diffie_hellman(sender_public.as_bytes()).await?;
 
-    // 12. Record whether the CEK could be successfully determined for this
-    //     recipient.
-    // 14. Compute the Encoded Protected Header value base64(JWE Protected Header).
-    // 15. Let the Additional Authenticated Data (JWE AAD) = Encoded Protected
-    //     Header.
+    // unpack JWE
+    let iv =
+        Base64UrlUnpadded::decode_vec(&jwe.iv).map_err(|e| anyhow!("issue decoding `iv`: {e}"))?;
+    let tag = Base64UrlUnpadded::decode_vec(&jwe.tag)
+        .map_err(|e| anyhow!("issue decoding `tag`: {e}"))?;
     let aad = jwe.protected.to_string();
+    let ciphertext = Base64UrlUnpadded::decode_vec(&jwe.ciphertext)
+        .map_err(|e| anyhow!("issue decoding `ciphertext`: {e}"))?;
 
-    // 16. Decrypt the JWE Ciphertext using the CEK, the JWE Initialization Vector,
-    //     the Additional Authenticated Data value, and the JWE Authentication Tag.
+    // decrypt ciphertext using CEK, iv, aad, and tag
     let mut buffer = ciphertext;
     let nonce = Nonce::from_slice(&iv);
     let tag = Tag::from_slice(&tag);
 
-    Aes128Gcm::new(Key::<Aes128Gcm>::from_slice(&cek))
+    Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&cek))
         .decrypt_in_place_detached(nonce, aad.as_bytes(), &mut buffer, tag)
         .map_err(|e| anyhow!("issue decrypting: {e}"))?;
 
@@ -203,28 +171,30 @@ pub async fn decrypt<T: DeserializeOwned>(
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Jwe {
     /// JWE protected header.
-    protected: Header,
+    pub protected: Header,
 
     /// Shared unprotected header as a JSON object.
     #[serde(skip_serializing_if = "Option::is_none")]
-    unprotected: Option<Value>,
+    pub unprotected: Option<Value>,
 
     /// Encrypted key, as a base64Url encoded string.
-    encrypted_key: String,
+    /// When using Direct Key Agreement or Direct Encryption, this will be the
+    /// empty octet sequence.
+    pub encrypted_key: String,
 
     /// AAD value, base64url encoded. Not used for JWE Compact Serialization.
     #[serde(skip_serializing_if = "Option::is_none")]
-    aad: Option<String>,
+    pub aad: Option<String>,
 
     /// Initialization vector (nonce), as a base64Url encoded string.
-    iv: String,
+    pub iv: String,
 
     /// Ciphertext, as a base64Url encoded string.
-    ciphertext: String,
+    pub ciphertext: String,
 
     /// Authentication tag resulting from the encryption, as a base64Url encoded
     /// string.
-    tag: String,
+    pub tag: String,
     //
     // /// Recipients array contains information specific to a single
     // /// recipient.
@@ -298,7 +268,7 @@ pub struct Header {
 impl Display for Header {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let bytes = serde_json::to_vec(&self).map_err(|_| fmt::Error)?;
-        write!(f, "{}", Base64::encode_string(&bytes))
+        write!(f, "{}", Base64UrlUnpadded::encode_string(&bytes))
     }
 }
 
@@ -306,7 +276,8 @@ impl FromStr for Header {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let bytes = Base64::decode_vec(s).map_err(|e| anyhow!("issue decoding header: {e}"))?;
+        let bytes =
+            Base64UrlUnpadded::decode_vec(s).map_err(|e| anyhow!("issue decoding header: {e}"))?;
         serde_json::from_slice(&bytes).map_err(|e| anyhow!("issue deserializing header: {e}"))
     }
 }
@@ -325,109 +296,102 @@ pub struct Recipient {
     encrypted_key: Option<String>,
 }
 
-/// The algorithm used to encrypt or determine the value of the content
-/// encryption key (CEK).
+/// The algorithm used to encrypt (key encryption) or derive (key agreement)
+/// the value of the shared content encryption key (CEK).
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub enum CekAlgorithm {
-    /// Elliptic Curve Diffie-Hellman Ephemeral-Static key agreement
-    /// (using Concat KDF).
+    /// Elliptic Curve Diffie-Hellman Ephemeral-Static key agreement using
+    /// Concat KDF.
+    ///
+    /// Uses Direct Key Agreement — a key agreement algorithm is used to agree
+    /// upon the CEK value.
     #[default]
     #[serde(rename = "ECDH-ES")]
     EcdhEs,
+    //
+    // /// ECDH-ES using Concat KDF and CEK wrapped with "A128KW".
+    // ///
+    // /// Uses Key Agreement with Key Wrapping — a Key Management Mode in which
+    // /// a key agreement algorithm is used to agree upon a symmetric key used
+    // /// to encrypt the CEK value to the intended recipient using a symmetric
+    // /// key wrapping algorithm.
+    // #[serde(rename = "ECDH-ES+A128KW")]
+    // EcdhEsA128Kw,
+
+    // /// ECDH-ES using Concat KDF and CEK wrapped with "A192KW".
+    // #[serde(rename = "ECDH-ES+A192KW")]
+    // EcdhEsA192Kw,
+
+    // /// ECDH-ES using Concat KDF and CEK wrapped with "A256KW".
+    // #[serde(rename = "ECDH-ES+A256KW")]
+    // EcdhEsA256Kw,
+
+    // /// Elliptic Curve Integrated Encryption Scheme for secp256k1.
+    // /// Uses AES 256 GCM and HKDF-SHA256.
+    // #[serde(rename = "ECIES-ES256K")]
+    // EciesSecp256k1,
 }
 
-/// The algorithm used to perform authenticated encryption on the plaintext to
-/// produce the ciphertext and the Authentication Tag. MUST be an AEAD
-/// algorithm.
+/// The algorithm used to perform authenticated content encryption. That is,
+/// encrypting the plaintext to produce the ciphertext and the Authentication
+/// Tag. MUST be an AEAD algorithm.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub enum EncryptionAlgorithm {
-    /// AES in Galois/Counter Mode (GCM) using a 128-bit key.
+    /// AES GCM using a 128-bit key.
     #[default]
-    #[serde(rename = "A128GCM")]
-    A128Gcm,
-
-    /// XSalsa20-Poly1305
-    #[serde(rename = "XSalsa20-Poly1305")]
-    XSalsa20Poly1305,
+    #[serde(rename = "A256GCM")]
+    A256Gcm,
     //
     // /// AES 256 CTR.
     // #[serde(rename = "A256CTR")]
     // Aes256Ctr,
 
-    // /// AES 256 GCM.
-    // #[serde(rename = "ECIES-ES256K")]
-    // EciesSecp256k1,
+    // /// XSalsa20-Poly1305
+    // #[serde(rename = "CHACHA20_POLY1305")]
+    // ChaCha20Poly1305,
 }
 
 #[cfg(test)]
 mod test {
-    use crypto_box::aead::{Aead, OsRng};
-    use crypto_box::{ChaChaBox, PublicKey, SecretKey};
-
     use super::*;
 
+    // round trip: encrypt and then decrypt
     #[tokio::test]
     async fn round_trip() {
-        let key_store = KeyStore::new();
-        let recipient_public = PublicKey::from(&key_store.recipient_secret);
-
-        // round trip: encrypt and then decrypt
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
 
-        let compact_jwe = encrypt(plaintext, &recipient_public.to_bytes(), &key_store)
-            .await
-            .expect("should encrypt");
-        let decrypted: String = decrypt(&compact_jwe, &key_store).await.expect("should decrypt");
+        let key_store = KeyStore::new();
+        let recipient_public = key_store.public_key();
+
+        let jwe = encrypt(&plaintext, &recipient_public).expect("should encrypt");
+        let decrypted: String = decrypt(&jwe, &key_store).await.expect("should decrypt");
 
         assert_eq!(plaintext, decrypted);
     }
 
     // Basic key store for testing
     struct KeyStore {
-        x25519_secret: x25519_dalek::StaticSecret,
-        recipient_secret: SecretKey,
+        recipient_secret: x25519_dalek::StaticSecret,
     }
 
     impl KeyStore {
         fn new() -> Self {
             Self {
-                x25519_secret: x25519_dalek::StaticSecret::random_from_rng(&mut OsRng),
-                recipient_secret: SecretKey::generate(&mut OsRng),
+                recipient_secret: x25519_dalek::StaticSecret::random_from_rng(&mut OsRng),
             }
         }
     }
 
     impl Cipher for KeyStore {
-        async fn encrypt(
-            &self, plaintext: &[u8], recipient_public_key: &[u8],
-        ) -> anyhow::Result<Vec<u8>> {
-            let pk: &[u8; 32] = recipient_public_key.try_into()?;
-
-            let secret_key = SecretKey::from_bytes(self.x25519_secret.to_bytes());
-
-            let chachabox = ChaChaBox::new(&PublicKey::from(*pk), &secret_key);
-            let ciphertext = chachabox
-                .encrypt(&Nonce::default(), plaintext)
-                .map_err(|e| anyhow!("issue encrypting: {e}"))?;
-
-            Ok(ciphertext)
+        fn public_key(&self) -> Vec<u8> {
+            x25519_dalek::PublicKey::from(&self.recipient_secret).as_bytes().to_vec()
         }
 
-        fn ephemeral_public_key(&self) -> Vec<u8> {
-            x25519_dalek::PublicKey::from(&self.x25519_secret).as_bytes().to_vec()
-        }
-
-        async fn decrypt(
-            &self, ciphertext: &[u8], sender_public_key: &[u8],
-        ) -> anyhow::Result<Vec<u8>> {
-            let pk: &[u8; 32] = sender_public_key.try_into()?;
-
-            let chachabox = ChaChaBox::new(&PublicKey::from(*pk), &self.recipient_secret);
-            let plaintext = chachabox
-                .decrypt(&Nonce::default(), ciphertext)
-                .map_err(|e| anyhow!("issue decrypting: {}", e.to_string()))?;
-
-            Ok(plaintext)
+        async fn diffie_hellman(&self, sender_public: &[u8]) -> Result<Vec<u8>> {
+            let sender_key: [u8; 32] = sender_public.try_into()?;
+            let sender_public = x25519_dalek::PublicKey::from(sender_key);
+            let shared_secret = self.recipient_secret.diffie_hellman(&sender_public);
+            Ok(shared_secret.as_bytes().to_vec())
         }
     }
 }
