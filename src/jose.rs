@@ -44,7 +44,7 @@ pub mod jwt;
 
 use std::fmt::Display;
 
-pub use jwe::{EncryptionAlgorithm, Jwe};
+pub use jwe::{DataAlgorithm, Jwe};
 pub use jwk::PublicKeyJwk;
 pub use jws::{Jws, JwsBuilder};
 use serde::{Deserialize, Serialize};

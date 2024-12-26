@@ -25,10 +25,18 @@
 //! [RFC7638]: https://www.rfc-editor.org/rfc/rfc7638
 //! [RFC7517]: https://www.rfc-editor.org/rfc/rfc7517
 
+use anyhow::{anyhow, Result};
+use base64ct::{Base64UrlUnpadded, Encoding};
+use multibase::Base;
 use serde::{Deserialize, Serialize};
 
-use crate::jose::jwe::EncryptionAlgorithm;
+use crate::jose::jwe::KeyAlgorithm;
 use crate::{Curve, KeyType, KeyUse};
+
+const ED25519_CODEC: [u8; 2] = [0xed, 0x01];
+
+/// Alias for multi-base encoded string.
+pub type MultiKey = String;
 
 /// Simplified JSON Web Key (JWK) key structure.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
@@ -54,7 +62,7 @@ pub struct PublicKeyJwk {
 
     /// Algorithm intended for use with the key.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub alg: Option<EncryptionAlgorithm>,
+    pub alg: Option<KeyAlgorithm>,
 
     /// Use of the key.
     #[serde(rename = "use")]
@@ -62,9 +70,83 @@ pub struct PublicKeyJwk {
     pub use_: Option<KeyUse>,
 }
 
+impl PublicKeyJwk {
+    /// Convert a multi-base encoded key into a JWK.
+    ///
+    /// # Errors
+    /// LATER: document errors.
+    pub fn from_multibase(key: &str) -> Result<Self> {
+        let (_, key_bytes) =
+            multibase::decode(key).map_err(|e| anyhow!("issue decoding key: {e}"))?;
+        if key_bytes.len() - 2 != 32 {
+            return Err(anyhow!("key is not 32 bytes long"));
+        }
+        if key_bytes[0..2] != ED25519_CODEC {
+            return Err(anyhow!("not Ed25519"));
+        }
+
+        Ok(Self {
+            kty: KeyType::Okp,
+            crv: Curve::Ed25519,
+            x: Base64UrlUnpadded::encode_string(&key_bytes[2..]),
+            ..Self::default()
+        })
+    }
+
+    /// Convert a JWK into a multi-base encoded key.
+    ///
+    /// # Errors
+    /// LATER: document errors.
+    pub fn to_multibase(&self) -> Result<String> {
+        let mut key_bytes = Vec::new();
+        key_bytes.extend_from_slice(&ED25519_CODEC);
+        key_bytes.extend_from_slice(&Base64UrlUnpadded::decode_vec(&self.x)?);
+        Ok(multibase::encode(Base::Base58Btc, &key_bytes))
+    }
+}
+
 /// A set of JWKs.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Jwks {
     /// The set of public key JWKs
     pub keys: Vec<PublicKeyJwk>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn round_trip() {
+        let jwk = PublicKeyJwk {
+            kty: KeyType::Okp,
+            crv: Curve::Ed25519,
+            x: "q6rjRnEH_XK72jvB8FNBJtOl9_gDs6NW49cAz6p2sW4".to_string(),
+            ..PublicKeyJwk::default()
+        };
+
+        let converted_jwk =
+            PublicKeyJwk::from_multibase("z6Mkr1NtupNezZtcUAMxJ79HPex6ZTR9RnGh8xfV257ZQdss")
+                .expect("should convert");
+        assert_eq!(jwk, converted_jwk);
+
+        let converted_multi = converted_jwk.to_multibase().expect("should convert");
+        assert_eq!("z6Mkr1NtupNezZtcUAMxJ79HPex6ZTR9RnGh8xfV257ZQdss", converted_multi);
+    }
+
+    #[test]
+    fn to_jwk() {
+        let jwk = PublicKeyJwk::from_multibase("z6Mkj8Jr1rg3YjVWWhg7ahEYJibqhjBgZt1pDCbT4Lv7D4HX")
+            .expect("should convert");
+
+        assert_eq!(
+            PublicKeyJwk {
+                kty: KeyType::Okp,
+                crv: Curve::Ed25519,
+                x: "RW-Q0fO2oECyLs4rZDZZo4p6b7pu7UF2eu9JBsktDco".to_string(),
+                ..PublicKeyJwk::default()
+            },
+            jwk
+        );
+    }
 }

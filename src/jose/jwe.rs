@@ -84,10 +84,10 @@ pub fn encrypt<T: Serialize + Send>(plaintext: &T, recipient_public: &[u8]) -> R
     // ...when using direct, the JWE Encrypted Key is an empty octet sequence
     let encrypted_key = Base64UrlUnpadded::encode_string(&[0; 32]);
 
-    // JWE Protected Header
+    // JWE Protected Header — encoded to Additional Authenticated Data (AAD)
     let protected = Header {
-        alg: CekAlgorithm::EcdhEs,
-        enc: EncryptionAlgorithm::A256Gcm,
+        alg: KeyAlgorithm::EcdhEs,
+        enc: DataAlgorithm::A256Gcm,
         // FIXME: set these values to something meaningful
         apu: Base64UrlUnpadded::encode_string(b"Alice"),
         apv: Base64UrlUnpadded::encode_string(b"Bob"),
@@ -99,10 +99,7 @@ pub fn encrypt<T: Serialize + Send>(plaintext: &T, recipient_public: &[u8]) -> R
         },
     };
 
-    // generate initialization vector (nonce)for content encryption
     let iv = Aes256Gcm::generate_nonce(&mut OsRng);
-
-    // JWE Additional Authenticated Data is the encoded JWE Protected Header
     let aad = &Base64UrlUnpadded::encode_string(&serde_json::to_vec(&protected)?);
 
     // encrypt plaintext using the CEK, initialization vector, and AAD
@@ -244,12 +241,12 @@ impl FromStr for Jwe {
 pub struct Header {
     /// Identifies the algorithm used to encrypt or determine the value of the
     /// content encryption key (CEK).
-    pub alg: CekAlgorithm,
+    pub alg: KeyAlgorithm,
 
     /// The algorithm used to perform authenticated encryption on the plaintext
     /// to produce the ciphertext and the Authentication Tag. MUST be an AEAD
     /// algorithm.
-    pub enc: EncryptionAlgorithm,
+    pub enc: DataAlgorithm,
 
     /// Key agreement `PartyUInfo` value, used to generate the shared key.
     /// Contains producer information as a base64url string.
@@ -299,7 +296,7 @@ pub struct Recipient {
 /// The algorithm used to encrypt (key encryption) or derive (key agreement)
 /// the value of the shared content encryption key (CEK).
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
-pub enum CekAlgorithm {
+pub enum KeyAlgorithm {
     /// Elliptic Curve Diffie-Hellman Ephemeral-Static key agreement using
     /// Concat KDF.
     ///
@@ -336,7 +333,7 @@ pub enum CekAlgorithm {
 /// encrypting the plaintext to produce the ciphertext and the Authentication
 /// Tag. MUST be an AEAD algorithm.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
-pub enum EncryptionAlgorithm {
+pub enum DataAlgorithm {
     /// AES GCM using a 128-bit key.
     #[default]
     #[serde(rename = "A256GCM")]
@@ -347,8 +344,8 @@ pub enum EncryptionAlgorithm {
     // Aes256Ctr,
 
     // /// XSalsa20-Poly1305
-    // #[serde(rename = "CHACHA20_POLY1305")]
-    // ChaCha20Poly1305,
+    // #[serde(rename = "XSalsa20-Poly1305")]
+    // XSalsa20Poly1305,
 }
 
 #[cfg(test)]

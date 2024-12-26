@@ -35,6 +35,7 @@ coset = "0.3.8"
 ecdsa = "0.16.9"
 ed25519-dalek = { version = "2.1.1", features = ["rand_core"] }
 k256 = "0.13.4"
+multibase = "0.9"
 rand = "0.8.5"
 serde = { version = "1.0.216", features = ["derive"] }
 serde_json = { version = "1.0.134", features = ["alloc"] }
