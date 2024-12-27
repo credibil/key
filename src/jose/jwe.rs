@@ -52,6 +52,7 @@ use std::str::FromStr;
 
 use aes_gcm::aead::KeyInit; // heapless,
 use aes_gcm::{AeadCore, AeadInPlace, Aes256Gcm, Key, Nonce, Tag};
+use aes_kw::Kek;
 use anyhow::{anyhow, Result};
 use base64ct::{Base64UrlUnpadded, Encoding};
 use rand::rngs::OsRng;
@@ -62,6 +63,68 @@ use x25519_dalek::{EphemeralSecret, PublicKey};
 
 use crate::jose::jwk::PublicKeyJwk;
 use crate::{Cipher, Curve, KeyType};
+
+pub fn encrypt2<T: Serialize + Send>(plaintext: &T, recipient_public: &[&[u8]]) -> Result<Jwe> {
+    let protected = Protected {
+        enc: DataAlgorithm::A256Gcm,
+        alg: None,
+        epk: None,
+    };
+
+    let aad = Base64UrlUnpadded::encode_string(&serde_json::to_vec(&protected)?);
+    let cek = Aes256Gcm::generate_key(&mut OsRng);
+    let iv = Aes256Gcm::generate_nonce(&mut OsRng);
+
+    // encrypt plaintext using the CEK, initialization vector, and AAD
+    let mut buffer = serde_json::to_vec(plaintext)?;
+    let tag = Aes256Gcm::new(&cek)
+        .encrypt_in_place_detached(&iv, aad.as_bytes(), &mut buffer)
+        .map_err(|e| anyhow!("issue encrypting: {e}"))?;
+
+    // encrypt CEK per recipient using ECDH-ES+AES256GCM
+    let mut recipients = vec![];
+    for recipient in recipient_public {
+        // recipient public key
+        let public_bytes: [u8; 32] = (*recipient).try_into()?;
+        let public_key = PublicKey::from(public_bytes);
+
+        // derive shared secret using ECDH-ES
+        let ephemeral_secret = EphemeralSecret::random_from_rng(rand::thread_rng());
+        let ephemeral_public = PublicKey::from(&ephemeral_secret);
+        let shared_key = ephemeral_secret.diffie_hellman(&public_key);
+
+        // wrap CEK using shared secret and Aes256KW
+        let kek = Kek::from(*shared_key.as_bytes());
+        let wrapped_key = kek.wrap_vec(&cek).map_err(|e| anyhow!("issue wrapping cek: {e}"))?;
+        let encrypted_key = Base64UrlUnpadded::encode_string(&wrapped_key);
+
+        recipients.push(Recipient {
+            header: Header {
+                alg: KeyAlgorithm::EcdhEsA256Kw,
+                kid: Some("ALICE_DID".to_string()),
+                epk: PublicKeyJwk {
+                    kty: KeyType::Okp,
+                    crv: Curve::Ed25519,
+                    x: Base64UrlUnpadded::encode_string(ephemeral_public.as_bytes()),
+                    ..PublicKeyJwk::default()
+                },
+                apu: None,
+                apv: None,
+            },
+            encrypted_key,
+        });
+    }
+
+    Ok(Jwe {
+        protected,
+        unprotected: None,
+        recipients: Recipients::Many { recipients },
+        iv: Base64UrlUnpadded::encode_string(&iv),
+        ciphertext: Base64UrlUnpadded::encode_string(&buffer),
+        tag: Base64UrlUnpadded::encode_string(&tag),
+        aad,
+    })
+}
 
 /// Encrypt plaintext and return a JWE.
 ///
@@ -76,31 +139,18 @@ pub fn encrypt<T: Serialize + Send>(plaintext: &T, recipient_public: &[u8]) -> R
     let ephemeral_secret = EphemeralSecret::random_from_rng(rand::thread_rng());
     let ephemeral_public = PublicKey::from(&ephemeral_secret);
 
-    // ...when using Direct Key Agreement, the CEK is the DH shared secret
+    // when using Direct Key Agreement, the CEK is the DH shared secret
     let recipient_key: [u8; 32] = recipient_public.try_into()?;
     let recipient_public = PublicKey::from(recipient_key);
     let cek = ephemeral_secret.diffie_hellman(&recipient_public);
 
-    // ...when using direct, the JWE Encrypted Key is an empty octet sequence
-    let encrypted_key = Base64UrlUnpadded::encode_string(&[0; 32]);
-
-    // JWE Protected Header — encoded to Additional Authenticated Data (AAD)
-    let protected = Header {
-        alg: KeyAlgorithm::EcdhEs,
+    let protected = Protected {
         enc: DataAlgorithm::A256Gcm,
-        // FIXME: set these values to something meaningful
-        apu: Base64UrlUnpadded::encode_string(b"Alice"),
-        apv: Base64UrlUnpadded::encode_string(b"Bob"),
-        epk: PublicKeyJwk {
-            kty: KeyType::Okp,
-            crv: Curve::Ed25519,
-            x: Base64UrlUnpadded::encode_string(ephemeral_public.as_bytes()),
-            ..PublicKeyJwk::default()
-        },
+        alg: None,
+        epk: None,
     };
-
     let iv = Aes256Gcm::generate_nonce(&mut OsRng);
-    let aad = &Base64UrlUnpadded::encode_string(&serde_json::to_vec(&protected)?);
+    let aad = Base64UrlUnpadded::encode_string(&serde_json::to_vec(&protected)?);
 
     // encrypt plaintext using the CEK, initialization vector, and AAD
     // - generates ciphertext and a JWE Authentication Tag
@@ -110,13 +160,32 @@ pub fn encrypt<T: Serialize + Send>(plaintext: &T, recipient_public: &[u8]) -> R
         .encrypt_in_place_detached(&iv, aad.as_bytes(), &mut buffer)
         .map_err(|e| anyhow!("issue encrypting: {e}"))?;
 
+    // recipient header
+    let header = Header {
+        alg: KeyAlgorithm::EcdhEs,
+        kid: None,
+        epk: PublicKeyJwk {
+            kty: KeyType::Okp,
+            crv: Curve::Ed25519,
+            x: Base64UrlUnpadded::encode_string(ephemeral_public.as_bytes()),
+            ..PublicKeyJwk::default()
+        },
+        apu: None,
+        apv: None,
+    };
+
     Ok(Jwe {
         protected,
-        encrypted_key,
+        unprotected: None,
+        recipients: Recipients::One(Recipient {
+            header,
+            // when using direct, the JWE Encrypted Key is an empty octet sequence
+            encrypted_key: Base64UrlUnpadded::encode_string(&[0; 32]),
+        }),
         iv: Base64UrlUnpadded::encode_string(&iv),
         ciphertext: Base64UrlUnpadded::encode_string(&buffer),
         tag: Base64UrlUnpadded::encode_string(&tag),
-        ..Jwe::default()
+        aad,
     })
 }
 
@@ -128,8 +197,12 @@ pub fn encrypt<T: Serialize + Send>(plaintext: &T, recipient_public: &[u8]) -> R
 ///
 /// Returns an error if the JWE cannot be decrypted.
 pub async fn decrypt<T: DeserializeOwned>(jwe: &Jwe, cipher: &impl Cipher) -> Result<T> {
+    let Recipients::One(recipient) = &jwe.recipients else {
+        return Err(anyhow!("invalid number of recipients"));
+    };
+
     // get sender's ephemeral public key (used in key agreement)
-    let sender_public = Base64UrlUnpadded::decode_vec(&jwe.protected.epk.x)
+    let sender_public = Base64UrlUnpadded::decode_vec(&recipient.header.epk.x)
         .map_err(|e| anyhow!("issue decoding sender public key `x`: {e}"))?;
     let sender_key: [u8; 32] = sender_public.as_slice().try_into()?;
     let sender_public = x25519_dalek::PublicKey::from(sender_key);
@@ -163,25 +236,23 @@ pub async fn decrypt<T: DeserializeOwned>(jwe: &Jwe, cipher: &impl Cipher) -> Re
 /// present.
 ///
 /// In this case, the members of the JOSE Header are the union of the members of
-/// the JWE Protected Header, JWE Shared Unprotected Header, and JWE
+/// the JWE Protected header, JWE Shared Unprotected Header, and JWE
 /// Per-Recipient Unprotected Header values that are present.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Jwe {
     /// JWE protected header.
-    pub protected: Header,
+    pub protected: Protected,
 
     /// Shared unprotected header as a JSON object.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unprotected: Option<Value>,
 
-    /// Encrypted key, as a base64Url encoded string.
-    /// When using Direct Key Agreement or Direct Encryption, this will be the
-    /// empty octet sequence.
-    pub encrypted_key: String,
+    /// The Recipients array contains information specific to each recipient.
+    #[serde(flatten)]
+    pub recipients: Recipients,
 
     /// AAD value, base64url encoded. Not used for JWE Compact Serialization.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub aad: Option<String>,
+    pub aad: String,
 
     /// Initialization vector (nonce), as a base64Url encoded string.
     pub iv: String,
@@ -192,22 +263,28 @@ pub struct Jwe {
     /// Authentication tag resulting from the encryption, as a base64Url encoded
     /// string.
     pub tag: String,
-    //
-    // /// Recipients array contains information specific to a single
-    // /// recipient.
-    // recipients: Quota<Recipient>,
 }
 
-/// Compact Serialization
-///     base64(JWE Protected Header) + '.'
-///     + base64(JWE Encrypted Key) + '.'
-///     + base64(JWE Initialization Vector) + '.'
-///     + base64(JWE Ciphertext) + '.'
-///     + base64(JWE Authentication Tag)
+/// Compact Serialization. Can only be used with a single recipient.
+///
+/// In the JWE Compact Serialization, a JWE is represented as the concatenation:
+///   base64(JWE Protected Header) + '.'
+///   + base64(JWE Encrypted Key) + '.'
+///   + base64(JWE Initialization Vector) + '.'
+///   + base64(JWE Ciphertext) + '.'
+///   + base64(JWE Authentication Tag)
 impl Display for Jwe {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let protected = &self.protected.to_string();
-        let encrypted_key = &self.encrypted_key;
+        let Recipients::One(recipient) = &self.recipients else {
+            return Err(fmt::Error);
+        };
+
+        // add recipient "epk" to protected header
+        let mut protected = self.protected.clone();
+        protected.epk = Some(recipient.header.epk.clone());
+
+        let protected = &protected.to_string();
+        let encrypted_key = &recipient.encrypted_key;
         let iv = &self.iv;
         let ciphertext = &self.ciphertext;
         let tag = &self.tag;
@@ -216,6 +293,7 @@ impl Display for Jwe {
     }
 }
 
+/// Deserialize JWE from Compact Serialization format.
 impl FromStr for Jwe {
     type Err = anyhow::Error;
 
@@ -225,9 +303,24 @@ impl FromStr for Jwe {
             return Err(anyhow!("invalid JWE"));
         }
 
+        let protected = Protected::from_str(parts[0])?;
+        let enc = protected.enc;
+        let alg = protected.alg.unwrap_or_default();
+        let epk = protected.epk.unwrap_or_default();
+
         Ok(Self {
-            protected: Header::from_str(parts[0])?,
-            encrypted_key: parts[1].to_string(),
+            protected: Protected {
+                enc,
+                ..Protected::default()
+            },
+            recipients: Recipients::One(Recipient {
+                header: Header {
+                    alg,
+                    epk,
+                    ..Header::default()
+                },
+                encrypted_key: parts[1].to_string(),
+            }),
             iv: parts[2].to_string(),
             ciphertext: parts[3].to_string(),
             tag: parts[4].to_string(),
@@ -236,40 +329,44 @@ impl FromStr for Jwe {
     }
 }
 
-/// Represents the JWE header.
+/// Phe JWE Shareed Protected header.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
-pub struct Header {
+pub struct Protected {
     /// Identifies the algorithm used to encrypt or determine the value of the
     /// content encryption key (CEK).
-    pub alg: KeyAlgorithm,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alg: Option<KeyAlgorithm>,
 
     /// The algorithm used to perform authenticated encryption on the plaintext
     /// to produce the ciphertext and the Authentication Tag. MUST be an AEAD
     /// algorithm.
     pub enc: DataAlgorithm,
 
-    /// Key agreement `PartyUInfo` value, used to generate the shared key.
-    /// Contains producer information as a base64url string.
-    pub apu: String,
-
-    /// Key agreement `PartyVInfo` value, used to generate the shared key.
-    /// Contains producer information as a base64url string.
-    pub apv: String,
-
     /// The ephemeral public key created by the originator for use in key
     /// agreement algorithms.
-    pub epk: PublicKeyJwk,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub epk: Option<PublicKeyJwk>,
+    //
+    // /// Key agreement `PartyUInfo` value, used to generate the shared key.
+    // /// Contains producer information as a base64url string.
+    // #[serde(skip_serializing_if = "Option::is_none")]
+    // pub apu: Option<String>,
+
+    // /// Key agreement `PartyVInfo` value, used to generate the shared key.
+    // /// Contains producer information as a base64url string.
+    // #[serde(skip_serializing_if = "Option::is_none")]
+    // pub apv: Option<String>,
 }
 
 /// Serialize Header to base64 encoded string
-impl Display for Header {
+impl Display for Protected {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let bytes = serde_json::to_vec(&self).map_err(|_| fmt::Error)?;
         write!(f, "{}", Base64UrlUnpadded::encode_string(&bytes))
     }
 }
 
-impl FromStr for Header {
+impl FromStr for Protected {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -279,18 +376,68 @@ impl FromStr for Header {
     }
 }
 
+/// JWE serialization is affected by the number of recipients. In the case of a
+/// single recipient, the flattened JWE JSON Serialization syntax is used to
+/// streamline the JWE.
+///
+/// The "recipients" member is flattened into the top-level JSON object instead
+/// of being nested within the "recipients" member.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum Recipients {
+    /// Single recipient (flattened JWE JSON syntax).
+    One(Recipient),
+
+    /// Multiple recipients (nested JWE JSON syntax).
+    Many {
+        /// The Recipients array contains information specific to each
+        /// recipient. Fields with values shared by all recipients (via Header
+        /// fields) may be empty.
+        recipients: Vec<Recipient>,
+    },
+}
+
+impl Default for Recipients {
+    fn default() -> Self {
+        Self::One(Recipient::default())
+    }
+}
+
 /// Contains information specific to a single recipient.
 /// MUST be present with exactly one array element per recipient, even if some
 /// or all of the array element values are the empty JSON object "{}".
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Recipient {
     /// JWE Per-Recipient Unprotected Header.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    header: Option<Header>,
+    header: Header,
 
     /// The recipient's JWE Encrypted Key, as a base64Url encoded string.
+    encrypted_key: String,
+}
+
+/// The JWE Recipient header.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub struct Header {
+    /// Identifies the algorithm used to encrypt or determine the value of the
+    /// content encryption key (CEK).
+    pub alg: KeyAlgorithm,
+
+    /// References the public key to which the JWE was encrypted. Used by
+    /// recipients to determine the private key needed to decrypt the JWE.
+    pub kid: Option<String>,
+
+    /// The ephemeral public key created by the originator for use in key
+    /// agreement algorithms.
+    pub epk: PublicKeyJwk,
+
+    /// Key agreement `PartyUInfo` value, used to generate the shared key.
+    /// Contains producer information as a base64url string.
     #[serde(skip_serializing_if = "Option::is_none")]
-    encrypted_key: Option<String>,
+    pub apu: Option<String>,
+
+    /// Key agreement `PartyVInfo` value, used to generate the shared key.
+    /// Contains producer information as a base64url string.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub apv: Option<String>,
 }
 
 /// The algorithm used to encrypt (key encryption) or derive (key agreement)
@@ -305,28 +452,20 @@ pub enum KeyAlgorithm {
     #[default]
     #[serde(rename = "ECDH-ES")]
     EcdhEs,
-    //
-    // /// ECDH-ES using Concat KDF and CEK wrapped with "A128KW".
-    // ///
-    // /// Uses Key Agreement with Key Wrapping — a Key Management Mode in which
-    // /// a key agreement algorithm is used to agree upon a symmetric key used
-    // /// to encrypt the CEK value to the intended recipient using a symmetric
-    // /// key wrapping algorithm.
-    // #[serde(rename = "ECDH-ES+A128KW")]
-    // EcdhEsA128Kw,
 
-    // /// ECDH-ES using Concat KDF and CEK wrapped with "A192KW".
-    // #[serde(rename = "ECDH-ES+A192KW")]
-    // EcdhEsA192Kw,
+    /// ECDH-ES using Concat KDF and CEK wrapped with "A256KW".
+    ///
+    /// Uses Key Agreement with Key Wrapping — a Key Management Mode in which
+    /// a key agreement algorithm is used to agree upon a symmetric key used
+    /// to encrypt the CEK value to the intended recipient using a symmetric
+    /// key wrapping algorithm.
+    #[serde(rename = "ECDH-ES+A256KW")]
+    EcdhEsA256Kw,
 
-    // /// ECDH-ES using Concat KDF and CEK wrapped with "A256KW".
-    // #[serde(rename = "ECDH-ES+A256KW")]
-    // EcdhEsA256Kw,
-
-    // /// Elliptic Curve Integrated Encryption Scheme for secp256k1.
-    // /// Uses AES 256 GCM and HKDF-SHA256.
-    // #[serde(rename = "ECIES-ES256K")]
-    // EciesSecp256k1,
+    /// Elliptic Curve Integrated Encryption Scheme for secp256k1.
+    /// Uses AES 256 GCM and HKDF-SHA256.
+    #[serde(rename = "ECIES-ES256K")]
+    EciesSecp256k1,
 }
 
 /// The algorithm used to perform authenticated content encryption. That is,
@@ -338,14 +477,23 @@ pub enum DataAlgorithm {
     #[default]
     #[serde(rename = "A256GCM")]
     A256Gcm,
-    //
-    // /// AES 256 CTR.
-    // #[serde(rename = "A256CTR")]
-    // Aes256Ctr,
 
-    // /// XSalsa20-Poly1305
-    // #[serde(rename = "XSalsa20-Poly1305")]
-    // XSalsa20Poly1305,
+    /// AES 256 CTR.
+    #[serde(rename = "A256CTR")]
+    Aes256Ctr,
+
+    /// XSalsa20-Poly1305
+    #[serde(rename = "XSalsa20-Poly1305")]
+    XSalsa20Poly1305,
+}
+
+/// The compression algorithm applied to the plaintext before encryption.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub enum Zip {
+    /// DEFLATE compression algorithm.
+    #[default]
+    #[serde(rename = "DEF")]
+    Deflate,
 }
 
 #[cfg(test)]

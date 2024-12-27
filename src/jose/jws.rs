@@ -7,6 +7,7 @@
 //! [RFC7515]: https://www.rfc-editor.org/rfc/rfc7515
 //! [RFC7518]: https://www.rfc-editor.org/rfc/rfc7518
 
+use std::fmt::Display;
 use std::future::Future;
 use std::str::FromStr;
 
@@ -18,7 +19,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::jose::jwk::PublicKeyJwk;
 pub use crate::jose::jwt::Jwt;
-pub use crate::jose::{KeyType, Type};
 use crate::{Algorithm, Curve, Signer};
 
 /// Encode the provided header and claims payload and sign, returning a JWT in
@@ -76,6 +76,29 @@ where
     })
 }
 
+/// The JWS `typ` header parameter.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub enum Type {
+    /// General purpose JWT type.
+    #[default]
+    #[serde(rename = "jwt")]
+    Jwt,
+
+    /// JWT `typ` for Wallet's Proof of possession of key material.
+    #[serde(rename = "openid4vci-proof+jwt")]
+    Openid4VciProofJwt,
+
+    /// JWT `typ` for Authorization Request Object.
+    #[serde(rename = "oauth-authz-req+jwt")]
+    OauthAuthzReqJwt,
+}
+
+impl Display for Type {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+
 /// JWS definition.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct Jws {
@@ -100,7 +123,7 @@ impl Jws {
         let protected = Protected {
             alg: signer.algorithm(),
             typ,
-            key: KeyType::KeyId(verification_method),
+            key: Key::KeyId(verification_method),
             ..Protected::default()
         };
 
@@ -199,7 +222,7 @@ pub struct Protected {
 
     /// The key material for the public key.
     #[serde(flatten)]
-    pub key: KeyType,
+    pub key: Key,
 
     /// Contains a certificate (or certificate chain) corresponding to the key
     /// used to sign the JWT. This element MAY be used to convey a key
@@ -223,17 +246,17 @@ impl Protected {
     #[must_use]
     pub fn kid(&self) -> Option<&str> {
         match &self.key {
-            KeyType::KeyId(kid) => Some(kid),
-            KeyType::Jwk(_) => None,
+            Key::KeyId(kid) => Some(kid),
+            Key::Jwk(_) => None,
         }
     }
 
-    /// Returns the `kid` if the key type is `KeyId`.
+    /// Returns the `kid` if the key is type `KeyId`.
     #[must_use]
     pub const fn jwk(&self) -> Option<&PublicKeyJwk> {
         match &self.key {
-            KeyType::Jwk(jwk) => Some(jwk),
-            KeyType::KeyId(_) => None,
+            Key::Jwk(jwk) => Some(jwk),
+            Key::KeyId(_) => None,
         }
     }
 }
@@ -289,6 +312,27 @@ impl PublicKeyJwk {
     }
 }
 
+/// The type of public key material for the JWT.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub enum Key {
+    /// Contains the key ID. If the Credential is bound to a DID, the kid refers
+    /// to a DID URL which identifies a particular key in the DID Document
+    /// that the Credential should bound to. Alternatively, may refer to a
+    /// key inside a JWKS.
+    #[serde(rename = "kid")]
+    KeyId(String),
+
+    /// Contains the key material the new Credential shall be bound to.
+    #[serde(rename = "jwk")]
+    Jwk(PublicKeyJwk),
+}
+
+impl Default for Key {
+    fn default() -> Self {
+        Self::KeyId(String::new())
+    }
+}
+
 /// Options to use when creating a permission grant.
 #[derive(Clone, Debug, Default)]
 pub struct JwsBuilder<T>
@@ -337,7 +381,7 @@ where
         let protected = Protected {
             alg: signer.algorithm(),
             typ: self.jwt_type,
-            key: KeyType::KeyId(verification_method),
+            key: Key::KeyId(verification_method),
             ..Protected::default()
         };
 

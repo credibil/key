@@ -115,16 +115,3 @@ pub enum Curve {
     Es256K,
 }
 
-/// The intended usage of the public `KeyType`. This enum is serialized
-/// `untagged`
-#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
-pub enum KeyUse {
-    /// Public key is to be used for signature verification
-    #[default]
-    #[serde(rename = "sig")]
-    Signature,
-
-    /// Public key is to be used for encryption
-    #[serde(rename = "enc")]
-    Encryption,
-}

@@ -31,7 +31,7 @@ use multibase::Base;
 use serde::{Deserialize, Serialize};
 
 use crate::jose::jwe::KeyAlgorithm;
-use crate::{Curve, KeyType, KeyUse};
+use crate::{Curve, KeyType};
 
 const ED25519_CODEC: [u8; 2] = [0xed, 0x01];
 
@@ -103,6 +103,20 @@ impl PublicKeyJwk {
         key_bytes.extend_from_slice(&Base64UrlUnpadded::decode_vec(&self.x)?);
         Ok(multibase::encode(Base::Base58Btc, &key_bytes))
     }
+}
+
+/// The intended usage of the public `KeyType`. This enum is serialized
+/// `untagged`
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub enum KeyUse {
+    /// Public key is to be used for signature verification
+    #[default]
+    #[serde(rename = "sig")]
+    Signature,
+
+    /// Public key is to be used for encryption
+    #[serde(rename = "enc")]
+    Encryption,
 }
 
 /// A set of JWKs.

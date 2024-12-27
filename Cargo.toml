@@ -28,6 +28,7 @@ nursery = "warn"
 
 [dependencies]
 aes-gcm = "0.10.3"
+aes-kw = { version = "0.2.1", features = ["alloc"] }
 anyhow = "1.0.95"
 base64ct = { version = "1.6.0", features = ["std"] }
 ciborium = "0.2.2"
@@ -42,9 +43,8 @@ serde_json = { version = "1.0.134", features = ["alloc"] }
 tracing = "0.1.41"
 x25519-dalek = { version = "2.0.1", features = ["static_secrets"] }
 
-# crypto_box = { version = "0.9.1", features = ["chacha20", "heapless"] }
+# XSalsa20-Poly1305: https://docs.rs/crypto_box/latest/crypto_box/
 # https://docs.rs/ecies/latest/ecies/index.html
-# https://docs.rs/aes-kw/latest/aes_kw
 
 [dev-dependencies]
 hex = "0.4.3"
