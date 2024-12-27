@@ -64,7 +64,25 @@ use x25519_dalek::{EphemeralSecret, PublicKey};
 use crate::jose::jwk::PublicKeyJwk;
 use crate::{Cipher, Curve, KeyType};
 
-pub fn encrypt2<T: Serialize + Send>(plaintext: &T, recipient_public: &[&[u8]]) -> Result<Jwe> {
+/// Recipient information required when generating a JWE.
+pub struct RecipientInfo {
+    /// The fully qualified key ID (e.g. did:example:abc#encryption-key-id) of
+    /// the public key to be used to encrypt the content encryption key (CEK).
+    pub key_id: String,
+
+    /// The recipient's public key, in bytes, to be used to encrypt the content
+    /// encryption key (CEK).
+    pub public_key: [u8; 32],
+
+    /// Optional additional information to include in the recipients header.
+    pub header: Option<Value>,
+}
+
+/// Encrypt plaintext and return a JWE.
+/// 
+/// # Errors
+/// LATER: document errors
+pub fn encrypt2<T: Serialize + Send>(plaintext: &T, recipients: &[RecipientInfo]) -> Result<Jwe> {
     let protected = Protected {
         enc: DataAlgorithm::A256Gcm,
         alg: None,
@@ -82,11 +100,12 @@ pub fn encrypt2<T: Serialize + Send>(plaintext: &T, recipient_public: &[&[u8]]) 
         .map_err(|e| anyhow!("issue encrypting: {e}"))?;
 
     // encrypt CEK per recipient using ECDH-ES+AES256GCM
-    let mut recipients = vec![];
-    for recipient in recipient_public {
+    let mut encrypted_ceks = vec![];
+    for r in recipients {
         // recipient public key
-        let public_bytes: [u8; 32] = (*recipient).try_into()?;
-        let public_key = PublicKey::from(public_bytes);
+        let public_key = PublicKey::from(r.public_key);
+        // let public_bytes: [u8; 32] = (*recipient).try_into()?;
+        // let public_key = PublicKey::from(public_bytes);
 
         // derive shared secret using ECDH-ES
         let ephemeral_secret = EphemeralSecret::random_from_rng(rand::thread_rng());
@@ -98,10 +117,10 @@ pub fn encrypt2<T: Serialize + Send>(plaintext: &T, recipient_public: &[&[u8]]) 
         let wrapped_key = kek.wrap_vec(&cek).map_err(|e| anyhow!("issue wrapping cek: {e}"))?;
         let encrypted_key = Base64UrlUnpadded::encode_string(&wrapped_key);
 
-        recipients.push(Recipient {
+        encrypted_ceks.push(Recipient {
             header: Header {
                 alg: KeyAlgorithm::EcdhEsA256Kw,
-                kid: Some("ALICE_DID".to_string()),
+                kid: Some(r.key_id.clone()),
                 epk: PublicKeyJwk {
                     kty: KeyType::Okp,
                     crv: Curve::Ed25519,
@@ -110,6 +129,7 @@ pub fn encrypt2<T: Serialize + Send>(plaintext: &T, recipient_public: &[&[u8]]) 
                 },
                 apu: None,
                 apv: None,
+                extra: r.header.clone(),
             },
             encrypted_key,
         });
@@ -118,7 +138,9 @@ pub fn encrypt2<T: Serialize + Send>(plaintext: &T, recipient_public: &[&[u8]]) 
     Ok(Jwe {
         protected,
         unprotected: None,
-        recipients: Recipients::Many { recipients },
+        recipients: Recipients::Many {
+            recipients: encrypted_ceks,
+        },
         iv: Base64UrlUnpadded::encode_string(&iv),
         ciphertext: Base64UrlUnpadded::encode_string(&buffer),
         tag: Base64UrlUnpadded::encode_string(&tag),
@@ -134,14 +156,15 @@ pub fn encrypt2<T: Serialize + Send>(plaintext: &T, recipient_public: &[&[u8]]) 
 /// # Errors
 ///
 /// Returns an error if the plaintext cannot be encrypted.
-pub fn encrypt<T: Serialize + Send>(plaintext: &T, recipient_public: &[u8]) -> Result<Jwe> {
+pub fn encrypt<T: Serialize + Send>(plaintext: &T, recipient: &RecipientInfo) -> Result<Jwe> {
     // generate a CEK to encrypt payload
     let ephemeral_secret = EphemeralSecret::random_from_rng(rand::thread_rng());
     let ephemeral_public = PublicKey::from(&ephemeral_secret);
 
     // when using Direct Key Agreement, the CEK is the DH shared secret
-    let recipient_key: [u8; 32] = recipient_public.try_into()?;
-    let recipient_public = PublicKey::from(recipient_key);
+    // let recipient_key: [u8; 32] = recipient_public.try_into()?;
+    // let recipient_public = PublicKey::from(recipient_key);
+    let recipient_public = PublicKey::from(recipient.public_key);
     let cek = ephemeral_secret.diffie_hellman(&recipient_public);
 
     let protected = Protected {
@@ -170,6 +193,7 @@ pub fn encrypt<T: Serialize + Send>(plaintext: &T, recipient_public: &[u8]) -> R
             x: Base64UrlUnpadded::encode_string(ephemeral_public.as_bytes()),
             ..PublicKeyJwk::default()
         },
+        extra: recipient.header.clone(),
         apu: None,
         apv: None,
     };
@@ -408,10 +432,10 @@ impl Default for Recipients {
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Recipient {
     /// JWE Per-Recipient Unprotected Header.
-    header: Header,
+    pub header: Header,
 
     /// The recipient's JWE Encrypted Key, as a base64Url encoded string.
-    encrypted_key: String,
+    pub encrypted_key: String,
 }
 
 /// The JWE Recipient header.
@@ -421,8 +445,8 @@ pub struct Header {
     /// content encryption key (CEK).
     pub alg: KeyAlgorithm,
 
-    /// References the public key to which the JWE was encrypted. Used by
-    /// recipients to determine the private key needed to decrypt the JWE.
+    /// The fully qualified key ID (e.g. did:example:abc#encryption-key-id) of
+    /// the public key used to encrypt the content encryption key (CEK).
     pub kid: Option<String>,
 
     /// The ephemeral public key created by the originator for use in key
@@ -430,14 +454,19 @@ pub struct Header {
     pub epk: PublicKeyJwk,
 
     /// Key agreement `PartyUInfo` value, used to generate the shared key.
-    /// Contains producer information as a base64url string.
+    /// A base64url string containing information about the producer.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub apu: Option<String>,
 
     /// Key agreement `PartyVInfo` value, used to generate the shared key.
-    /// Contains producer information as a base64url string.
+    /// A base64url string containing information about the recipient.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub apv: Option<String>,
+
+    /// Addtional, user-provided header values.
+    #[serde(flatten)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extra: Option<Value>,
 }
 
 /// The algorithm used to encrypt (key encryption) or derive (key agreement)
@@ -500,15 +529,57 @@ pub enum Zip {
 mod test {
     use super::*;
 
+    // Complete
+    // {
+    // 	"protected": "eyJlbmMiOiJBMTI4Q0JDLUhTMjU2In0",
+    // 	"unprotected": {"jku":"https://server.example.com/keys.jwks"},
+    // 	"recipients":[
+    //        {
+    // 			"header": {"alg":"RSA1_5","kid":"2011-04-29"},
+    //         	"encrypted_key":
+    //          		"UGhIOguC7IuEvf_NPVaXsGMoLOmwvc1GyqlIKOK1nN94nHPoltGRhWhw7Zx0-
+    //           	kFm1NJn8LE9XShH59_i8J0PH5ZZyNfGy2xGdULU7sHNF6Gp2vPLgNZ__deLKx
+    //           	GHZ7PcHALUzoOegEI-8E66jX2E4zyJKx-YxzZIItRzC5hlRirb6Y5Cl_p-ko3
+    //           	YvkkysZIFNPccxRU7qve1WYPxqbb2Yw8kZqa2rMWI5ng8OtvzlV7elprCbuPh
+    //           	cCdZ6XDP0_F8rkXds2vE4X-ncOIM8hAYHHi29NX0mcKiRaD0-D-ljQTP-cFPg
+    //           	wCp6X-nZZd9OHBv-B3oWh2TbqmScqXMR4gp_A"
+    // 		},
+    // 		{
+    // 			"header": {"alg":"A128KW","kid":"7"},
+    //         	"encrypted_key": "6KB707dM9YTIgHtLvtgWQ8mKwboJW3of9locizkDTHzBC2IlrT1oOQ"
+    // 		}
+    // 	],
+    // 	"iv": "AxY8DCtDaGlsbGljb3RoZQ",
+    // 	"ciphertext": "KDlTtXchhZTGufMYmOYGS4HffxPSUrfmqCHXaI9wOGY",
+    // 	"tag": "Mz-VPPyU4RlcuYv1IwIvzw"
+    // }
+
+    // Flattened
+    // {
+    // 	"protected": "eyJlbmMiOiJBMTI4Q0JDLUhTMjU2In0",
+    // 	"unprotected": {"jku":"https://server.example.com/keys.jwks"},
+    // 	"header": {"alg":"A128KW","kid":"7"},
+    // 	"encrypted_key": "6KB707dM9YTIgHtLvtgWQ8mKwboJW3of9locizkDTHzBC2IlrT1oOQ",
+    // 	"iv": "AxY8DCtDaGlsbGljb3RoZQ",
+    // 	"ciphertext": "KDlTtXchhZTGufMYmOYGS4HffxPSUrfmqCHXaI9wOGY",
+    // 	"tag": "Mz-VPPyU4RlcuYv1IwIvzw"
+    // }
+
     // round trip: encrypt and then decrypt
     #[tokio::test]
     async fn round_trip() {
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
 
         let key_store = KeyStore::new();
-        let recipient_public = key_store.public_key();
+        let public_key: [u8; 32] = key_store.public_key().try_into().expect("should convert");
 
-        let jwe = encrypt(&plaintext, &recipient_public).expect("should encrypt");
+        let recipient = RecipientInfo {
+            key_id: "".to_string(),
+            public_key,
+            header: None,
+        };
+
+        let jwe = encrypt(&plaintext, &recipient).expect("should encrypt");
         let decrypted: String = decrypt(&jwe, &key_store).await.expect("should decrypt");
 
         assert_eq!(plaintext, decrypted);
