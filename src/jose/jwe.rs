@@ -117,7 +117,7 @@ pub fn encrypt2<T: Serialize + Send>(plaintext: &T, recipients: &[RecipientInfo]
         let wrapped_key = kek.wrap_vec(&cek).map_err(|e| anyhow!("issue wrapping cek: {e}"))?;
         let encrypted_key = Base64UrlUnpadded::encode_string(&wrapped_key);
 
-        encrypted_ceks.push(Recipient {
+        encrypted_ceks.push(KeyEncryption {
             header: Header {
                 alg: KeyAlgorithm::EcdhEsA256Kw,
                 kid: Some(r.key_id.clone()),
@@ -201,7 +201,7 @@ pub fn encrypt<T: Serialize + Send>(plaintext: &T, recipient: &RecipientInfo) ->
     Ok(Jwe {
         protected,
         unprotected: None,
-        recipients: Recipients::One(Recipient {
+        recipients: Recipients::One(KeyEncryption {
             header,
             // when using direct, the JWE Encrypted Key is an empty octet sequence
             encrypted_key: Base64UrlUnpadded::encode_string(&[0; 32]),
@@ -337,7 +337,7 @@ impl FromStr for Jwe {
                 enc,
                 ..Protected::default()
             },
-            recipients: Recipients::One(Recipient {
+            recipients: Recipients::One(KeyEncryption {
                 header: Header {
                     alg,
                     epk,
@@ -409,20 +409,20 @@ impl FromStr for Protected {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Recipients {
     /// Single recipient (flattened JWE JSON syntax).
-    One(Recipient),
+    One(KeyEncryption),
 
     /// Multiple recipients (nested JWE JSON syntax).
     Many {
         /// The Recipients array contains information specific to each
         /// recipient. Fields with values shared by all recipients (via Header
         /// fields) may be empty.
-        recipients: Vec<Recipient>,
+        recipients: Vec<KeyEncryption>,
     },
 }
 
 impl Default for Recipients {
     fn default() -> Self {
-        Self::One(Recipient::default())
+        Self::One(KeyEncryption::default())
     }
 }
 
@@ -430,7 +430,7 @@ impl Default for Recipients {
 /// MUST be present with exactly one array element per recipient, even if some
 /// or all of the array element values are the empty JSON object "{}".
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
-pub struct Recipient {
+pub struct KeyEncryption {
     /// JWE Per-Recipient Unprotected Header.
     pub header: Header,
 
