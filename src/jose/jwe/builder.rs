@@ -145,7 +145,7 @@ impl<R> JweBuilder<NoPayload, R> {
 }
 
 impl<T: Serialize + Send> JweBuilder<WithPayload<'_, T>, WithRecipients> {
-    fn encrypt(&self, encrypter: &mut impl Algorithm) -> Result<Jwe> {
+    fn encrypt(&self, alg: &mut impl Algorithm) -> Result<Jwe> {
         let protected = Protected {
             enc: ContentAlgorithm::A256Gcm,
             alg: None,
@@ -153,7 +153,7 @@ impl<T: Serialize + Send> JweBuilder<WithPayload<'_, T>, WithRecipients> {
         let aad = Base64UrlUnpadded::encode_string(&serde_json::to_vec(&protected)?);
         let iv = Aes256Gcm::generate_nonce(&mut OsRng);
 
-        let cek = encrypter.cek();
+        let cek = alg.cek();
 
         // encrypt plaintext
         let mut buffer = serde_json::to_vec(self.payload.0)?;
@@ -162,7 +162,7 @@ impl<T: Serialize + Send> JweBuilder<WithPayload<'_, T>, WithRecipients> {
             .map_err(|e| anyhow!("issue encrypting: {e}"))?;
 
         // zero-ized key
-        let recipients = encrypter.recipients()?;
+        let recipients = alg.recipients()?;
 
         Ok(Jwe {
             protected,
@@ -191,7 +191,7 @@ impl<T: Serialize + Send> JweBuilder<WithPayload<'_, T>, WithRecipients> {
 }
 
 // Trait to allow for differences encryption process for different Key
-// Management Algorithms.
+// Management Algorithms ("alg" parameter).
 trait Algorithm {
     // Generate a Content Encryption Key (CEK) for the JWE.
     fn cek(&mut self) -> [u8; 32];
@@ -200,9 +200,9 @@ trait Algorithm {
     fn recipients(&self) -> Result<Recipients>;
 }
 
-// ----------------------------------------------------------------------------
-// ECDH-ES: Key Management Algorithm
-// ----------------------------------------------------------------------------
+// ----------------
+// ECDH-ES
+// ----------------
 struct EcdhEs {
     recipient_public: [u8; 32],
     ephemeral_public: [u8; 32],
@@ -244,9 +244,9 @@ impl Algorithm for EcdhEs {
     }
 }
 
-// ----------------------------------------------------------------------------
-// ECDH-ES+A256KW: Key Management Algorithm
-// ----------------------------------------------------------------------------
+// ----------------
+// ECDH-ES+A256KW
+// ----------------
 struct EcdhEsA256Kw<'a> {
     recipients: &'a [Recipient],
     cek: [u8; 32],
@@ -254,7 +254,7 @@ struct EcdhEsA256Kw<'a> {
 
 impl<'a> From<&'a [Recipient]> for EcdhEsA256Kw<'a> {
     fn from(recipients: &'a [Recipient]) -> Self {
-        EcdhEsA256Kw {
+        Self {
             recipients,
             cek: [0; 32],
         }
@@ -290,6 +290,72 @@ impl Algorithm for EcdhEsA256Kw<'_> {
                         kty: KeyType::Okp,
                         crv: Curve::Ed25519,
                         x: Base64UrlUnpadded::encode_string(ephemeral_public.as_bytes()),
+                        ..PublicKeyJwk::default()
+                    },
+                    ..Header::default()
+                },
+                encrypted_key: Base64UrlUnpadded::encode_string(&encrypted_key),
+            });
+        }
+
+        Ok(Recipients::Many { recipients })
+    }
+}
+
+// ----------------
+// ECIES-ES256K (example code only)
+// ----------------
+// TODO: implement ECIES-ES256K
+struct EciesSecp256k1<'a> {
+    recipients: &'a [Recipient],
+    cek: [u8; 32],
+}
+
+impl<'a> From<&'a [Recipient]> for EciesSecp256k1<'a> {
+    fn from(recipients: &'a [Recipient]) -> Self {
+        Self {
+            recipients,
+            cek: [0; 32],
+        }
+    }
+}
+
+impl Algorithm for EciesSecp256k1<'_> {
+    fn cek(&mut self) -> [u8; 32] {
+        let cek = Aes256Gcm::generate_key(&mut OsRng);
+        self.cek = cek.into();
+        self.cek
+    }
+
+    fn recipients(&self) -> Result<Recipients> {
+        let mut recipients = vec![];
+
+        for r in self.recipients {
+            // FIXME: replace with actual public key
+            let public_key = [0; 65];
+
+            // derive shared secret
+            let (ephemeral_secret, ephemeral_public) = ecies::utils::generate_keypair();
+
+            // encrypt (wrap) CEK
+            let aes_key = ecies::utils::encapsulate(
+                &ephemeral_secret,
+                &ecies::PublicKey::parse(&public_key)?,
+            )?;
+            let encrypted_key = ecies::symmetric::sym_encrypt(&aes_key, &self.cek)
+                .ok_or_else(|| anyhow!("issue wrapping cek"))?;
+
+            let ephemeral_public = ephemeral_public.serialize();
+
+            recipients.push(KeyEncryption {
+                header: Header {
+                    alg: KeyAlgorithm::EcdhEsA256Kw,
+                    kid: Some(r.key_id.clone()),
+                    epk: PublicKeyJwk {
+                        kty: KeyType::Ec,
+                        crv: Curve::Es256K,
+                        x: Base64UrlUnpadded::encode_string(&ephemeral_public[1..33]),
+                        y: Some(Base64UrlUnpadded::encode_string(&ephemeral_public[33..65])),
                         ..PublicKeyJwk::default()
                     },
                     ..Header::default()

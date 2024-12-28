@@ -47,7 +47,6 @@
 // omitted. PartyUInfo and PartyVInfo are the ephemeral and static public keys,
 // respectively. SHA256 is used as the hashing function.
 
-
 mod builder;
 
 use std::fmt::{self, Display};
@@ -170,7 +169,7 @@ impl Display for Jwe {
         };
 
         // add recipient data to protected header
-        let mut protected = ProtectedExt {
+        let mut protected = ProtectedFlat {
             inner: self.protected.clone(),
             epk: recipient.header.epk.clone(),
         };
@@ -199,7 +198,7 @@ impl FromStr for Jwe {
         }
 
         let bytes = Base64UrlUnpadded::decode_vec(parts[0]).map_err(|_| fmt::Error)?;
-        let protected: ProtectedExt = serde_json::from_slice(&bytes).map_err(|_| fmt::Error)?;
+        let protected: ProtectedFlat = serde_json::from_slice(&bytes).map_err(|_| fmt::Error)?;
         let enc = protected.inner.enc;
         let alg = protected.inner.alg.unwrap_or_default();
         let epk = protected.epk;
@@ -240,7 +239,7 @@ pub struct Protected {
 }
 
 #[derive(Deserialize, Serialize)]
-struct ProtectedExt {
+struct ProtectedFlat {
     #[serde(flatten)]
     inner: Protected,
     epk: PublicKeyJwk,
@@ -337,10 +336,6 @@ pub enum KeyAlgorithm {
     /// Uses AES 256 GCM and HKDF-SHA256.
     #[serde(rename = "ECIES-ES256K")]
     EciesSecp256k1,
-
-    /// Chacha20+Poly1305
-    #[serde(rename = "Chacha20+Poly1305")]
-    Chacha20Poly1305,
     //
     // /// A256CTR
     // #[serde(rename = "A256CTR")]
@@ -356,6 +351,13 @@ pub enum ContentAlgorithm {
     #[default]
     #[serde(rename = "A256GCM")]
     A256Gcm,
+    //
+    // /// XChaCha20-Poly1305 is a competitive alternative to AES-256-GCM because
+    // /// it’s fast and constant-time without hardware acceleration (resistent
+    // /// to cache-timing attacks). It also has longer nonce length to alleviate
+    // /// the risk of birthday attacks when nonces are generated randomly.
+    // #[serde(rename = "XChacha20+Poly1305")]
+    // XChacha20Poly1305,
 }
 
 /// The compression algorithm applied to the plaintext before encryption.

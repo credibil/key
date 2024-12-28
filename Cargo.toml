@@ -33,7 +33,10 @@ anyhow = "1.0.95"
 base64ct = { version = "1.6.0", features = ["std"] }
 ciborium = "0.2.2"
 coset = "0.3.8"
+# crypto_box = "0.9.1"
+# chacha20poly1305 = "0.10.1"
 ecdsa = "0.16.9"
+ecies = { version = "0.2.7", default-features = false, features = ["pure", "std"] }
 ed25519-dalek = { version = "2.1.1", features = ["rand_core"] }
 k256 = "0.13.4"
 multibase = "0.9"
@@ -42,9 +45,6 @@ serde = { version = "1.0.216", features = ["derive"] }
 serde_json = { version = "1.0.134", features = ["alloc"] }
 tracing = "0.1.41"
 x25519-dalek = { version = "2.0.1", features = ["static_secrets"] }
-
-# XSalsa20-Poly1305: https://docs.rs/crypto_box/latest/crypto_box/
-# https://docs.rs/ecies/latest/ecies/index.html
 
 [dev-dependencies]
 hex = "0.4.3"
