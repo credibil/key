@@ -190,14 +190,18 @@ impl<T: Serialize + Send> JweBuilder<WithPayload<'_, T>, WithRecipients> {
     }
 }
 
+// Trait to allow for differences encryption process for different Key
+// Management Algorithms.
 trait Algorithm {
+    // Generate a Content Encryption Key (CEK) for the JWE.
     fn cek(&mut self) -> [u8; 32];
 
+    // Generate the key encryption material for the JWE recipients.
     fn recipients(&self) -> Result<Recipients>;
 }
 
 // ----------------------------------------------------------------------------
-// ECDH-ES: Implement Algorithm trait for key management
+// ECDH-ES: Key Management Algorithm
 // ----------------------------------------------------------------------------
 struct EcdhEs<'a, T: Serialize + Send> {
     builder: &'a JweBuilder<WithPayload<'a, T>, WithRecipients>,
@@ -249,7 +253,7 @@ impl<T: Serialize + Send> Algorithm for EcdhEs<'_, T> {
 }
 
 // ----------------------------------------------------------------------------
-// ECDH-ES+A256KW: Implement Algorithm trait for key management
+// ECDH-ES+A256KW: Key Management Algorithm
 // ----------------------------------------------------------------------------
 struct EcdhEsA256Kw<'a, T: Serialize + Send> {
     builder: &'a JweBuilder<WithPayload<'a, T>, WithRecipients>,
