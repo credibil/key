@@ -21,6 +21,12 @@ pub struct JweBuilder<P, R> {
     recipients: R,
 }
 
+impl Default for JweBuilder<NoPayload, NoRecipients> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[doc(hidden)]
 /// Typestate generic for a JWE builder with no payload.
 pub struct NoPayload;
@@ -48,7 +54,8 @@ pub struct Recipient {
 
 impl JweBuilder<NoPayload, NoRecipients> {
     /// Create a new JWE builder.
-    pub fn new() -> Self {
+    #[must_use]
+    pub const fn new() -> Self {
         Self {
             content_algorithm: None,
             key_algorithm: None,
@@ -60,13 +67,15 @@ impl JweBuilder<NoPayload, NoRecipients> {
 
 impl<P, R> JweBuilder<P, R> {
     /// The content encryption algorithm to use to encrypt the payload.
-    pub fn content_algorithm(mut self, algorithm: ContentAlgorithm) -> Self {
+    #[must_use]
+    pub const fn content_algorithm(mut self, algorithm: ContentAlgorithm) -> Self {
         self.content_algorithm = Some(algorithm);
         self
     }
 
     /// The key management algorithm to use for encrypting the JWE CEK.
-    pub fn key_algorithm(mut self, algorithm: KeyAlgorithm) -> Self {
+    #[must_use]
+    pub const fn key_algorithm(mut self, algorithm: KeyAlgorithm) -> Self {
         self.key_algorithm = Some(algorithm);
         self
     }
@@ -111,9 +120,8 @@ impl<P> JweBuilder<P, WithRecipients> {
     ///
     /// * `public_key` - The recipient's public key, in bytes, for encrypting
     ///   the content.
-    pub fn add_recipient(
-        mut self, key_id: impl Into<String>, public_key: [u8; 32],
-    ) -> JweBuilder<P, WithRecipients> {
+    #[must_use]
+    pub fn add_recipient(mut self, key_id: impl Into<String>, public_key: [u8; 32]) -> Self {
         let recipient = Recipient {
             key_id: key_id.into(),
             public_key,
@@ -125,9 +133,7 @@ impl<P> JweBuilder<P, WithRecipients> {
 
 impl<R> JweBuilder<NoPayload, R> {
     /// Set the payload to be encrypted.
-    pub fn payload<'a, T: Serialize + Send>(
-        self, payload: &'a T,
-    ) -> JweBuilder<WithPayload<'a, T>, R> {
+    pub fn payload<T: Serialize + Send>(self, payload: &T) -> JweBuilder<WithPayload<'_, T>, R> {
         JweBuilder {
             content_algorithm: self.content_algorithm,
             key_algorithm: self.key_algorithm,
@@ -137,18 +143,10 @@ impl<R> JweBuilder<NoPayload, R> {
     }
 }
 
-impl<'a, T: Serialize + Send> JweBuilder<WithPayload<'a, T>, WithRecipients> {
-    pub fn encrypt_one(&self) -> Result<Jwe> {
+impl<T: Serialize + Send> JweBuilder<WithPayload<'_, T>, WithRecipients> {
+    fn encrypt_one(&self) -> Result<Jwe> {
         let recipients = &self.recipients.0;
         let recipient = &recipients[0];
-
-        // generate a CEK to encrypt payload
-        let ephemeral_secret = EphemeralSecret::random_from_rng(rand::thread_rng());
-        let ephemeral_public = PublicKey::from(&ephemeral_secret);
-
-        // when using Direct Key Agreement, the CEK is the ECDH shared secret
-        let recipient_public = PublicKey::from(recipient.public_key);
-        let cek = ephemeral_secret.diffie_hellman(&recipient_public);
 
         let protected = Protected {
             enc: ContentAlgorithm::A256Gcm,
@@ -157,8 +155,15 @@ impl<'a, T: Serialize + Send> JweBuilder<WithPayload<'a, T>, WithRecipients> {
         let aad = Base64UrlUnpadded::encode_string(&serde_json::to_vec(&protected)?);
         let iv = Aes256Gcm::generate_nonce(&mut OsRng);
 
+        // generate the CEK
+        //...when there is only a single recipient we can use Direct Key
+        //   Agreement where the CEK is an ECDH shared secret
+        let ephemeral_secret = EphemeralSecret::random_from_rng(rand::thread_rng());
+        let ephemeral_public = PublicKey::from(&ephemeral_secret);
+        let recipient_public = PublicKey::from(recipient.public_key);
+        let cek = ephemeral_secret.diffie_hellman(&recipient_public);
+
         // encrypt plaintext using the CEK, initialization vector, and AAD
-        // - generates ciphertext and a JWE Authentication Tag
         let mut buffer = serde_json::to_vec(self.payload.0)?;
         let key = Key::<Aes256Gcm>::from_slice(cek.as_bytes());
         let tag = Aes256Gcm::new(key)
@@ -193,7 +198,7 @@ impl<'a, T: Serialize + Send> JweBuilder<WithPayload<'a, T>, WithRecipients> {
         })
     }
 
-    pub fn encrypt_many(&self) -> Result<Jwe> {
+    fn encrypt_many(&self) -> Result<Jwe> {
         let recipients = &self.recipients.0;
 
         let protected = Protected {
@@ -202,6 +207,8 @@ impl<'a, T: Serialize + Send> JweBuilder<WithPayload<'a, T>, WithRecipients> {
         };
         let aad = Base64UrlUnpadded::encode_string(&serde_json::to_vec(&protected)?);
         let iv = Aes256Gcm::generate_nonce(&mut OsRng);
+
+        // generate the CEK
         let cek = Aes256Gcm::generate_key(&mut OsRng);
 
         // encrypt plaintext using the CEK, initialization vector, and AAD
@@ -213,10 +220,7 @@ impl<'a, T: Serialize + Send> JweBuilder<WithPayload<'a, T>, WithRecipients> {
         // encrypt CEK per recipient using ECDH-ES+AES256GCM
         let mut encrypted_ceks = vec![];
         for r in recipients {
-            // recipient public key
             let public_key = PublicKey::from(r.public_key);
-            // let public_bytes: [u8; 32] = (*recipient).try_into()?;
-            // let public_key = PublicKey::from(public_bytes);
 
             // derive shared secret using ECDH-ES
             let ephemeral_secret = EphemeralSecret::random_from_rng(rand::thread_rng());
@@ -260,6 +264,9 @@ impl<'a, T: Serialize + Send> JweBuilder<WithPayload<'a, T>, WithRecipients> {
     }
 
     /// Build the JWE.
+    ///
+    /// # Errors
+    /// LATER: add error docs
     pub fn build(self) -> Result<Jwe> {
         if self.recipients.0.len() == 1 {
             self.encrypt_one()
@@ -269,130 +276,4 @@ impl<'a, T: Serialize + Send> JweBuilder<WithPayload<'a, T>, WithRecipients> {
     }
 }
 
-/// Encrypt plaintext and return a JWE.
-///
-/// N.B. We currently only support ECDH-ES key agreement and A256GCM
-/// content encryption.
-///
-/// # Errors
-///
-/// Returns an error if the plaintext cannot be encrypted.
-pub fn encrypt<T: Serialize + Send>(plaintext: &T, recipient: &Recipient) -> Result<Jwe> {
-    // generate a CEK to encrypt payload
-    let ephemeral_secret = EphemeralSecret::random_from_rng(rand::thread_rng());
-    let ephemeral_public = PublicKey::from(&ephemeral_secret);
-
-    // when using Direct Key Agreement, the CEK is the ECDH shared secret
-    let recipient_public = PublicKey::from(recipient.public_key);
-    let cek = ephemeral_secret.diffie_hellman(&recipient_public);
-
-    let protected = Protected {
-        enc: ContentAlgorithm::A256Gcm,
-        alg: None,
-    };
-    let aad = Base64UrlUnpadded::encode_string(&serde_json::to_vec(&protected)?);
-    let iv = Aes256Gcm::generate_nonce(&mut OsRng);
-
-    // encrypt plaintext using the CEK, initialization vector, and AAD
-    // - generates ciphertext and a JWE Authentication Tag
-    let mut buffer = serde_json::to_vec(plaintext)?;
-    let key = Key::<Aes256Gcm>::from_slice(cek.as_bytes());
-    let tag = Aes256Gcm::new(key)
-        .encrypt_in_place_detached(&iv, aad.as_bytes(), &mut buffer)
-        .map_err(|e| anyhow!("issue encrypting: {e}"))?;
-
-    // recipient header
-    let key_encryption = KeyEncryption {
-        header: Header {
-            alg: KeyAlgorithm::EcdhEs,
-            kid: None,
-            epk: PublicKeyJwk {
-                kty: KeyType::Okp,
-                crv: Curve::Ed25519,
-                x: Base64UrlUnpadded::encode_string(ephemeral_public.as_bytes()),
-                ..PublicKeyJwk::default()
-            },
-            apu: None,
-            apv: None,
-        },
-        encrypted_key: Base64UrlUnpadded::encode_string(&[0; 32]),
-    };
-
-    Ok(Jwe {
-        protected,
-        unprotected: None,
-        recipients: Recipients::One(key_encryption),
-        iv: Base64UrlUnpadded::encode_string(&iv),
-        ciphertext: Base64UrlUnpadded::encode_string(&buffer),
-        tag: Base64UrlUnpadded::encode_string(&tag),
-        aad,
-    })
-}
-
-/// Encrypt plaintext and return a JWE.
-///
-/// # Errors
-/// LATER: document errors
-pub fn encrypt2<T: Serialize + Send>(plaintext: &T, recipients: &[Recipient]) -> Result<Jwe> {
-    let protected = Protected {
-        enc: ContentAlgorithm::A256Gcm,
-        alg: None,
-    };
-    let aad = Base64UrlUnpadded::encode_string(&serde_json::to_vec(&protected)?);
-    let iv = Aes256Gcm::generate_nonce(&mut OsRng);
-    let cek = Aes256Gcm::generate_key(&mut OsRng);
-
-    // encrypt plaintext using the CEK, initialization vector, and AAD
-    let mut buffer = serde_json::to_vec(plaintext)?;
-    let tag = Aes256Gcm::new(&cek)
-        .encrypt_in_place_detached(&iv, aad.as_bytes(), &mut buffer)
-        .map_err(|e| anyhow!("issue encrypting: {e}"))?;
-
-    // encrypt CEK per recipient using ECDH-ES+AES256GCM
-    let mut encrypted_ceks = vec![];
-    for r in recipients {
-        // recipient public key
-        let public_key = PublicKey::from(r.public_key);
-        // let public_bytes: [u8; 32] = (*recipient).try_into()?;
-        // let public_key = PublicKey::from(public_bytes);
-
-        // derive shared secret using ECDH-ES
-        let ephemeral_secret = EphemeralSecret::random_from_rng(rand::thread_rng());
-        let ephemeral_public = PublicKey::from(&ephemeral_secret);
-        let shared_key = ephemeral_secret.diffie_hellman(&public_key);
-
-        // wrap CEK using shared secret and Aes256KW
-        let wrapped_key = Kek::from(*shared_key.as_bytes())
-            .wrap_vec(&cek)
-            .map_err(|e| anyhow!("issue wrapping cek: {e}"))?;
-        let encrypted_key = Base64UrlUnpadded::encode_string(&wrapped_key);
-
-        encrypted_ceks.push(KeyEncryption {
-            header: Header {
-                alg: KeyAlgorithm::EcdhEsA256Kw,
-                kid: Some(r.key_id.clone()),
-                epk: PublicKeyJwk {
-                    kty: KeyType::Okp,
-                    crv: Curve::Ed25519,
-                    x: Base64UrlUnpadded::encode_string(ephemeral_public.as_bytes()),
-                    ..PublicKeyJwk::default()
-                },
-                apu: None,
-                apv: None,
-            },
-            encrypted_key,
-        });
-    }
-
-    Ok(Jwe {
-        protected,
-        unprotected: None,
-        recipients: Recipients::Many {
-            recipients: encrypted_ceks,
-        },
-        iv: Base64UrlUnpadded::encode_string(&iv),
-        ciphertext: Base64UrlUnpadded::encode_string(&buffer),
-        tag: Base64UrlUnpadded::encode_string(&tag),
-        aad,
-    })
-}
+impl Jwe {}

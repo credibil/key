@@ -272,6 +272,7 @@ impl Default for Recipients {
 }
 
 /// Contains key encryption information specific to a recipient.
+/// 
 /// MUST be present with exactly one array element per recipient, even if some
 /// or all of the array element values are the empty JSON object "{}".
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
