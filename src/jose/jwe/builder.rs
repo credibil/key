@@ -2,6 +2,7 @@
 
 use aes_gcm::aead::KeyInit; // heapless,
 use aes_gcm::{AeadCore, AeadInPlace, Aes256Gcm}; //, Nonce, Tag};
+// use aes_gcm::aes::cipher::consts::U12;
 use aes_kw::Kek;
 use anyhow::{anyhow, Result};
 use base64ct::{Base64UrlUnpadded, Encoding};
@@ -18,7 +19,7 @@ pub struct JweBuilder<P, R> {
     content_algorithm: Option<ContentAlgorithm>,
     key_algorithm: Option<KeyAlgorithm>,
     payload: P,
-    recipients: R,
+    pub(crate) recipients: R,
 }
 
 impl Default for JweBuilder<NoPayload, NoRecipients> {
@@ -144,7 +145,7 @@ impl<R> JweBuilder<NoPayload, R> {
 }
 
 impl<T: Serialize + Send> JweBuilder<WithPayload<'_, T>, WithRecipients> {
-    fn encrypt(&self, encrypter: &mut impl Encrypt) -> Result<Jwe> {
+    fn encrypt(&self, encrypter: &mut impl Algorithm) -> Result<Jwe> {
         let protected = Protected {
             enc: ContentAlgorithm::A256Gcm,
             alg: None,
@@ -180,23 +181,22 @@ impl<T: Serialize + Send> JweBuilder<WithPayload<'_, T>, WithRecipients> {
     /// LATER: add error docs
     pub fn build(self) -> Result<Jwe> {
         if self.recipients.0.len() == 1 {
-            let mut encrypter = EcdhEs::from(&self);
-            self.encrypt(&mut encrypter)
+            let mut alg= EcdhEs::from(&self);
+            self.encrypt(&mut alg)
         } else {
-            let mut encrypter = EcdhEsA256Kw::from(&self);
-            self.encrypt(&mut encrypter)
+            let mut alg = EcdhEsA256Kw::from(&self);
+            self.encrypt(&mut alg)
         }
     }
 }
 
-// use aes_gcm::aes::cipher::consts::U12;
-
-trait Encrypt {
+trait Algorithm {
     fn cek(&mut self) -> [u8; 32];
 
     fn recipients(&self) -> Result<Recipients>;
 }
 
+// ECDH-ES key management algorithm
 struct EcdhEs<'a, T: Serialize + Send> {
     builder: &'a JweBuilder<WithPayload<'a, T>, WithRecipients>,
     ephemeral_public: PublicKey,
@@ -213,7 +213,7 @@ impl<'a, T: Serialize + Send> From<&'a JweBuilder<WithPayload<'a, T>, WithRecipi
     }
 }
 
-impl<T: Serialize + Send> Encrypt for EcdhEs<'_, T> {
+impl<T: Serialize + Send> Algorithm for EcdhEs<'_, T> {
     fn cek(&mut self) -> [u8; 32] {
         let recipients = &self.builder.recipients.0;
 
@@ -246,6 +246,7 @@ impl<T: Serialize + Send> Encrypt for EcdhEs<'_, T> {
     }
 }
 
+// ECDH-ES+A256KW key management algorithm
 struct EcdhEsA256Kw<'a, T: Serialize + Send> {
     builder: &'a JweBuilder<WithPayload<'a, T>, WithRecipients>,
     cek: [u8; 32],
@@ -262,7 +263,7 @@ impl<'a, T: Serialize + Send> From<&'a JweBuilder<WithPayload<'a, T>, WithRecipi
     }
 }
 
-impl<T: Serialize + Send> Encrypt for EcdhEsA256Kw<'_, T> {
+impl<T: Serialize + Send> Algorithm for EcdhEsA256Kw<'_, T> {
     fn cek(&mut self) -> [u8; 32] {
         let cek = Aes256Gcm::generate_key(&mut OsRng);
         self.cek = cek.into();
