@@ -181,7 +181,7 @@ impl<T: Serialize + Send> JweBuilder<WithPayload<'_, T>, WithRecipients> {
     /// LATER: add error docs
     pub fn build(self) -> Result<Jwe> {
         if self.recipients.0.len() == 1 {
-            let mut alg= EcdhEs::from(&self);
+            let mut alg = EcdhEs::from(&self);
             self.encrypt(&mut alg)
         } else {
             let mut alg = EcdhEsA256Kw::from(&self);
@@ -196,7 +196,9 @@ trait Algorithm {
     fn recipients(&self) -> Result<Recipients>;
 }
 
-// ECDH-ES key management algorithm
+// ----------------------------------------------------------------------------
+// ECDH-ES: Implement Algorithm trait for key management
+// ----------------------------------------------------------------------------
 struct EcdhEs<'a, T: Serialize + Send> {
     builder: &'a JweBuilder<WithPayload<'a, T>, WithRecipients>,
     ephemeral_public: PublicKey,
@@ -246,7 +248,9 @@ impl<T: Serialize + Send> Algorithm for EcdhEs<'_, T> {
     }
 }
 
-// ECDH-ES+A256KW key management algorithm
+// ----------------------------------------------------------------------------
+// ECDH-ES+A256KW: Implement Algorithm trait for key management
+// ----------------------------------------------------------------------------
 struct EcdhEsA256Kw<'a, T: Serialize + Send> {
     builder: &'a JweBuilder<WithPayload<'a, T>, WithRecipients>,
     cek: [u8; 32],
