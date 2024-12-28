@@ -180,10 +180,12 @@ impl<T: Serialize + Send> JweBuilder<WithPayload<'_, T>, WithRecipients> {
     /// # Errors
     /// LATER: add error docs
     pub fn build(self) -> Result<Jwe> {
-        if self.recipients.0.len() == 1 {
-            self.encrypt(&mut EcdhEs::from(&self))
+        let recipients = self.recipients.0.as_slice();
+
+        if recipients.len() == 1 {
+            self.encrypt(&mut EcdhEs::from(recipients))
         } else {
-            self.encrypt(&mut EcdhEsA256Kw::from(&self))
+            self.encrypt(&mut EcdhEsA256Kw::from(recipients))
         }
     }
 }
@@ -203,12 +205,11 @@ trait Algorithm {
 // ----------------------------------------------------------------------------
 struct EcdhEs {
     recipient_public: [u8; 32],
-    ephemeral_public: [u8; 32], //PublicKey,
+    ephemeral_public: [u8; 32],
 }
 
-impl<'a, T: Serialize + Send> From<&'a JweBuilder<WithPayload<'a, T>, WithRecipients>> for EcdhEs {
-    fn from(builder: &'a JweBuilder<WithPayload<'a, T>, WithRecipients>) -> Self {
-        let recipients = &builder.recipients.0;
+impl From<&[Recipient]> for EcdhEs {
+    fn from(recipients: &[Recipient]) -> Self {
         Self {
             recipient_public: recipients[0].public_key,
             ephemeral_public: [0; 32],
@@ -251,12 +252,10 @@ struct EcdhEsA256Kw<'a> {
     cek: [u8; 32],
 }
 
-impl<'a, T: Serialize + Send> From<&'a JweBuilder<WithPayload<'a, T>, WithRecipients>>
-    for EcdhEsA256Kw<'a>
-{
-    fn from(builder: &'a JweBuilder<WithPayload<'a, T>, WithRecipients>) -> Self {
+impl<'a> From<&'a [Recipient]> for EcdhEsA256Kw<'a> {
+    fn from(recipients: &'a [Recipient]) -> Self {
         EcdhEsA256Kw {
-            recipients: &builder.recipients.0,
+            recipients,
             cek: [0; 32],
         }
     }
@@ -293,8 +292,7 @@ impl Algorithm for EcdhEsA256Kw<'_> {
                         x: Base64UrlUnpadded::encode_string(ephemeral_public.as_bytes()),
                         ..PublicKeyJwk::default()
                     },
-                    apu: None,
-                    apv: None,
+                    ..Header::default()
                 },
                 encrypted_key: Base64UrlUnpadded::encode_string(&encrypted_key),
             });
