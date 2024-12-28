@@ -47,170 +47,36 @@
 // omitted. PartyUInfo and PartyVInfo are the ephemeral and static public keys,
 // respectively. SHA256 is used as the hashing function.
 
+mod builder;
+
 use std::fmt::{self, Display};
 use std::str::FromStr;
 
 use aes_gcm::aead::KeyInit; // heapless,
-use aes_gcm::{AeadCore, AeadInPlace, Aes256Gcm, Key, Nonce, Tag};
-use aes_kw::Kek;
+use aes_gcm::{AeadInPlace, Aes256Gcm, Key, Nonce, Tag};
 use anyhow::{anyhow, Result};
 use base64ct::{Base64UrlUnpadded, Encoding};
-use rand::rngs::OsRng;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use x25519_dalek::{EphemeralSecret, PublicKey};
 
+pub use self::builder::{JweBuilder, NoPayload, NoRecipients, WithPayload, WithRecipients};
 use crate::jose::jwk::PublicKeyJwk;
-use crate::{Cipher, Curve, KeyType};
+use crate::Cipher;
 
-/// Recipient information required when generating a JWE.
-pub struct RecipientInfo {
-    /// The fully qualified key ID (e.g. did:example:abc#encryption-key-id) of
-    /// the public key to be used to encrypt the content encryption key (CEK).
-    pub key_id: String,
-
-    /// The recipient's public key, in bytes, to be used to encrypt the content
-    /// encryption key (CEK).
-    pub public_key: [u8; 32],
-
-    /// Optional additional information to include in the recipients header.
-    pub header: Option<Value>,
-}
-
-/// Encrypt plaintext and return a JWE.
-/// 
-/// # Errors
-/// LATER: document errors
-pub fn encrypt2<T: Serialize + Send>(plaintext: &T, recipients: &[RecipientInfo]) -> Result<Jwe> {
-    let protected = Protected {
-        enc: DataAlgorithm::A256Gcm,
-        alg: None,
-        epk: None,
-    };
-
-    let aad = Base64UrlUnpadded::encode_string(&serde_json::to_vec(&protected)?);
-    let cek = Aes256Gcm::generate_key(&mut OsRng);
-    let iv = Aes256Gcm::generate_nonce(&mut OsRng);
-
-    // encrypt plaintext using the CEK, initialization vector, and AAD
-    let mut buffer = serde_json::to_vec(plaintext)?;
-    let tag = Aes256Gcm::new(&cek)
-        .encrypt_in_place_detached(&iv, aad.as_bytes(), &mut buffer)
-        .map_err(|e| anyhow!("issue encrypting: {e}"))?;
-
-    // encrypt CEK per recipient using ECDH-ES+AES256GCM
-    let mut encrypted_ceks = vec![];
-    for r in recipients {
-        // recipient public key
-        let public_key = PublicKey::from(r.public_key);
-        // let public_bytes: [u8; 32] = (*recipient).try_into()?;
-        // let public_key = PublicKey::from(public_bytes);
-
-        // derive shared secret using ECDH-ES
-        let ephemeral_secret = EphemeralSecret::random_from_rng(rand::thread_rng());
-        let ephemeral_public = PublicKey::from(&ephemeral_secret);
-        let shared_key = ephemeral_secret.diffie_hellman(&public_key);
-
-        // wrap CEK using shared secret and Aes256KW
-        let kek = Kek::from(*shared_key.as_bytes());
-        let wrapped_key = kek.wrap_vec(&cek).map_err(|e| anyhow!("issue wrapping cek: {e}"))?;
-        let encrypted_key = Base64UrlUnpadded::encode_string(&wrapped_key);
-
-        encrypted_ceks.push(KeyEncryption {
-            header: Header {
-                alg: KeyAlgorithm::EcdhEsA256Kw,
-                kid: Some(r.key_id.clone()),
-                epk: PublicKeyJwk {
-                    kty: KeyType::Okp,
-                    crv: Curve::Ed25519,
-                    x: Base64UrlUnpadded::encode_string(ephemeral_public.as_bytes()),
-                    ..PublicKeyJwk::default()
-                },
-                apu: None,
-                apv: None,
-                extra: r.header.clone(),
-            },
-            encrypted_key,
-        });
-    }
-
-    Ok(Jwe {
-        protected,
-        unprotected: None,
-        recipients: Recipients::Many {
-            recipients: encrypted_ceks,
-        },
-        iv: Base64UrlUnpadded::encode_string(&iv),
-        ciphertext: Base64UrlUnpadded::encode_string(&buffer),
-        tag: Base64UrlUnpadded::encode_string(&tag),
-        aad,
-    })
-}
-
-/// Encrypt plaintext and return a JWE.
-///
-/// N.B. We currently only support ECDH-ES key agreement and A256GCM
-/// content encryption.
+/// Encrypt plaintext using the defaults of A256GCM content encryption and
+/// ECDH-ES key agreement algorithms.
 ///
 /// # Errors
 ///
 /// Returns an error if the plaintext cannot be encrypted.
-pub fn encrypt<T: Serialize + Send>(plaintext: &T, recipient: &RecipientInfo) -> Result<Jwe> {
-    // generate a CEK to encrypt payload
-    let ephemeral_secret = EphemeralSecret::random_from_rng(rand::thread_rng());
-    let ephemeral_public = PublicKey::from(&ephemeral_secret);
-
-    // when using Direct Key Agreement, the CEK is the DH shared secret
-    // let recipient_key: [u8; 32] = recipient_public.try_into()?;
-    // let recipient_public = PublicKey::from(recipient_key);
-    let recipient_public = PublicKey::from(recipient.public_key);
-    let cek = ephemeral_secret.diffie_hellman(&recipient_public);
-
-    let protected = Protected {
-        enc: DataAlgorithm::A256Gcm,
-        alg: None,
-        epk: None,
-    };
-    let iv = Aes256Gcm::generate_nonce(&mut OsRng);
-    let aad = Base64UrlUnpadded::encode_string(&serde_json::to_vec(&protected)?);
-
-    // encrypt plaintext using the CEK, initialization vector, and AAD
-    // - generates ciphertext and a JWE Authentication Tag
-    let mut buffer = serde_json::to_vec(plaintext)?;
-    let key = Key::<Aes256Gcm>::from_slice(cek.as_bytes());
-    let tag = Aes256Gcm::new(key)
-        .encrypt_in_place_detached(&iv, aad.as_bytes(), &mut buffer)
-        .map_err(|e| anyhow!("issue encrypting: {e}"))?;
-
-    // recipient header
-    let header = Header {
-        alg: KeyAlgorithm::EcdhEs,
-        kid: None,
-        epk: PublicKeyJwk {
-            kty: KeyType::Okp,
-            crv: Curve::Ed25519,
-            x: Base64UrlUnpadded::encode_string(ephemeral_public.as_bytes()),
-            ..PublicKeyJwk::default()
-        },
-        extra: recipient.header.clone(),
-        apu: None,
-        apv: None,
-    };
-
-    Ok(Jwe {
-        protected,
-        unprotected: None,
-        recipients: Recipients::One(KeyEncryption {
-            header,
-            // when using direct, the JWE Encrypted Key is an empty octet sequence
-            encrypted_key: Base64UrlUnpadded::encode_string(&[0; 32]),
-        }),
-        iv: Base64UrlUnpadded::encode_string(&iv),
-        ciphertext: Base64UrlUnpadded::encode_string(&buffer),
-        tag: Base64UrlUnpadded::encode_string(&tag),
-        aad,
-    })
+pub fn encrypt<T: Serialize + Send>(plaintext: &T, recipient_public: &[u8; 32]) -> Result<Jwe> {
+    JweBuilder::new()
+        .content_algorithm(ContentAlgorithm::A256Gcm)
+        .key_algorithm(KeyAlgorithm::EcdhEs)
+        .payload(plaintext)
+        .add_recipient("", *recipient_public)
+        .build()
 }
 
 /// Decrypt the JWE and return the plaintext.
@@ -239,7 +105,6 @@ pub async fn decrypt<T: DeserializeOwned>(jwe: &Jwe, cipher: &impl Cipher) -> Re
         Base64UrlUnpadded::decode_vec(&jwe.iv).map_err(|e| anyhow!("issue decoding `iv`: {e}"))?;
     let tag = Base64UrlUnpadded::decode_vec(&jwe.tag)
         .map_err(|e| anyhow!("issue decoding `tag`: {e}"))?;
-    let aad = jwe.protected.to_string();
     let ciphertext = Base64UrlUnpadded::decode_vec(&jwe.ciphertext)
         .map_err(|e| anyhow!("issue decoding `ciphertext`: {e}"))?;
 
@@ -249,7 +114,7 @@ pub async fn decrypt<T: DeserializeOwned>(jwe: &Jwe, cipher: &impl Cipher) -> Re
     let tag = Tag::from_slice(&tag);
 
     Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&cek))
-        .decrypt_in_place_detached(nonce, aad.as_bytes(), &mut buffer, tag)
+        .decrypt_in_place_detached(nonce, jwe.aad.as_bytes(), &mut buffer, tag)
         .map_err(|e| anyhow!("issue decrypting: {e}"))?;
 
     Ok(serde_json::from_slice(&buffer)?)
@@ -303,11 +168,16 @@ impl Display for Jwe {
             return Err(fmt::Error);
         };
 
-        // add recipient "epk" to protected header
-        let mut protected = self.protected.clone();
-        protected.epk = Some(recipient.header.epk.clone());
+        // add recipient data to protected header
+        let mut protected = ProtectedExt {
+            inner: self.protected.clone(),
+            epk: recipient.header.epk.clone(),
+        };
+        protected.inner.alg = Some(recipient.header.alg.clone());
 
-        let protected = &protected.to_string();
+        let bytes = serde_json::to_vec(&protected).map_err(|_| fmt::Error)?;
+        let protected = Base64UrlUnpadded::encode_string(&bytes);
+
         let encrypted_key = &recipient.encrypted_key;
         let iv = &self.iv;
         let ciphertext = &self.ciphertext;
@@ -327,10 +197,11 @@ impl FromStr for Jwe {
             return Err(anyhow!("invalid JWE"));
         }
 
-        let protected = Protected::from_str(parts[0])?;
-        let enc = protected.enc;
-        let alg = protected.alg.unwrap_or_default();
-        let epk = protected.epk.unwrap_or_default();
+        let bytes = Base64UrlUnpadded::decode_vec(parts[0]).map_err(|_| fmt::Error)?;
+        let protected: ProtectedExt = serde_json::from_slice(&bytes).map_err(|_| fmt::Error)?;
+        let enc = protected.inner.enc;
+        let alg = protected.inner.alg.unwrap_or_default();
+        let epk = protected.epk;
 
         Ok(Self {
             protected: Protected {
@@ -364,40 +235,14 @@ pub struct Protected {
     /// The algorithm used to perform authenticated encryption on the plaintext
     /// to produce the ciphertext and the Authentication Tag. MUST be an AEAD
     /// algorithm.
-    pub enc: DataAlgorithm,
-
-    /// The ephemeral public key created by the originator for use in key
-    /// agreement algorithms.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub epk: Option<PublicKeyJwk>,
-    //
-    // /// Key agreement `PartyUInfo` value, used to generate the shared key.
-    // /// Contains producer information as a base64url string.
-    // #[serde(skip_serializing_if = "Option::is_none")]
-    // pub apu: Option<String>,
-
-    // /// Key agreement `PartyVInfo` value, used to generate the shared key.
-    // /// Contains producer information as a base64url string.
-    // #[serde(skip_serializing_if = "Option::is_none")]
-    // pub apv: Option<String>,
+    pub enc: ContentAlgorithm,
 }
 
-/// Serialize Header to base64 encoded string
-impl Display for Protected {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let bytes = serde_json::to_vec(&self).map_err(|_| fmt::Error)?;
-        write!(f, "{}", Base64UrlUnpadded::encode_string(&bytes))
-    }
-}
-
-impl FromStr for Protected {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let bytes =
-            Base64UrlUnpadded::decode_vec(s).map_err(|e| anyhow!("issue decoding header: {e}"))?;
-        serde_json::from_slice(&bytes).map_err(|e| anyhow!("issue deserializing header: {e}"))
-    }
+#[derive(Deserialize, Serialize)]
+struct ProtectedExt {
+    #[serde(flatten)]
+    inner: Protected,
+    epk: PublicKeyJwk,
 }
 
 /// JWE serialization is affected by the number of recipients. In the case of a
@@ -426,7 +271,7 @@ impl Default for Recipients {
     }
 }
 
-/// Contains information specific to a single recipient.
+/// Contains key encryption information specific to a recipient.
 /// MUST be present with exactly one array element per recipient, even if some
 /// or all of the array element values are the empty JSON object "{}".
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -462,11 +307,6 @@ pub struct Header {
     /// A base64url string containing information about the recipient.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub apv: Option<String>,
-
-    /// Addtional, user-provided header values.
-    #[serde(flatten)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub extra: Option<Value>,
 }
 
 /// The algorithm used to encrypt (key encryption) or derive (key agreement)
@@ -495,25 +335,25 @@ pub enum KeyAlgorithm {
     /// Uses AES 256 GCM and HKDF-SHA256.
     #[serde(rename = "ECIES-ES256K")]
     EciesSecp256k1,
+
+    /// Chacha20+Poly1305
+    #[serde(rename = "Chacha20+Poly1305")]
+    Chacha20Poly1305,
+    //
+    // /// A256CTR
+    // #[serde(rename = "A256CTR")]
+    // A256Ctr,
 }
 
 /// The algorithm used to perform authenticated content encryption. That is,
 /// encrypting the plaintext to produce the ciphertext and the Authentication
 /// Tag. MUST be an AEAD algorithm.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
-pub enum DataAlgorithm {
-    /// AES GCM using a 128-bit key.
+pub enum ContentAlgorithm {
+    /// AES GCM using a 256-bit key.
     #[default]
     #[serde(rename = "A256GCM")]
     A256Gcm,
-
-    /// AES 256 CTR.
-    #[serde(rename = "A256CTR")]
-    Aes256Ctr,
-
-    /// XSalsa20-Poly1305
-    #[serde(rename = "XSalsa20-Poly1305")]
-    XSalsa20Poly1305,
 }
 
 /// The compression algorithm applied to the plaintext before encryption.
@@ -527,6 +367,8 @@ pub enum Zip {
 
 #[cfg(test)]
 mod test {
+    use rand::rngs::OsRng;
+
     use super::*;
 
     // Complete
@@ -573,13 +415,28 @@ mod test {
         let key_store = KeyStore::new();
         let public_key: [u8; 32] = key_store.public_key().try_into().expect("should convert");
 
-        let recipient = RecipientInfo {
-            key_id: "".to_string(),
-            public_key,
-            header: None,
-        };
+        let jwe = encrypt(&plaintext, &public_key).expect("should encrypt");
+        let decrypted: String = decrypt(&jwe, &key_store).await.expect("should decrypt");
 
-        let jwe = encrypt(&plaintext, &recipient).expect("should encrypt");
+        assert_eq!(plaintext, decrypted);
+    }
+
+    // round trip: encrypt and then decrypt
+    #[tokio::test]
+    async fn builder() {
+        let plaintext = "The true sign of intelligence is not knowledge but imagination.";
+
+        let key_store = KeyStore::new();
+        let public_key: [u8; 32] = key_store.public_key().try_into().expect("should convert");
+
+        let jwe = JweBuilder::new()
+            // .data_algorithm(ContentAlgorithm::A256Gcm)
+            // .key_algorithm(KeyAlgorithm::EcdhEs)
+            .payload(&plaintext)
+            .add_recipient("".to_string(), public_key)
+            .build()
+            .expect("should encrypt");
+
         let decrypted: String = decrypt(&jwe, &key_store).await.expect("should decrypt");
 
         assert_eq!(plaintext, decrypted);

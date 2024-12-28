@@ -42,7 +42,7 @@ pub mod jwk;
 pub mod jws;
 pub mod jwt;
 
-pub use jwe::{DataAlgorithm, Jwe};
+pub use jwe::{ContentAlgorithm, Jwe};
 pub use jwk::PublicKeyJwk;
 pub use jws::{Jws, JwsBuilder, Type};
 
