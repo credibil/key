@@ -146,7 +146,6 @@ impl<R> JweBuilder<NoPayload, R> {
 impl<T: Serialize + Send> JweBuilder<WithPayload<'_, T>, WithRecipients> {
     fn encrypt_one(&self) -> Result<Jwe> {
         let recipients = &self.recipients.0;
-        let recipient = &recipients[0];
 
         let protected = Protected {
             enc: ContentAlgorithm::A256Gcm,
@@ -156,21 +155,20 @@ impl<T: Serialize + Send> JweBuilder<WithPayload<'_, T>, WithRecipients> {
         let iv = Aes256Gcm::generate_nonce(&mut OsRng);
 
         // generate the CEK
-        //...when there is only a single recipient we can use Direct Key
-        //   Agreement where the CEK is an ECDH shared secret
+        // ...when only a single recipient, use Direct Key Agreement
         let ephemeral_secret = EphemeralSecret::random_from_rng(rand::thread_rng());
         let ephemeral_public = PublicKey::from(&ephemeral_secret);
-        let recipient_public = PublicKey::from(recipient.public_key);
-        let cek = ephemeral_secret.diffie_hellman(&recipient_public);
+        let cek = ephemeral_secret.diffie_hellman(&PublicKey::from(recipients[0].public_key));
 
-        // encrypt plaintext using the CEK, initialization vector, and AAD
+        // encrypt plaintext
         let mut buffer = serde_json::to_vec(self.payload.0)?;
-        let key = Key::<Aes256Gcm>::from_slice(cek.as_bytes());
-        let tag = Aes256Gcm::new(key)
+        let tag = Aes256Gcm::new(&cek.to_bytes().into())
             .encrypt_in_place_detached(&iv, aad.as_bytes(), &mut buffer)
             .map_err(|e| anyhow!("issue encrypting: {e}"))?;
 
-        // recipient header
+        // zero-ized key
+        let encrypted_key = [0; 32];
+
         let key_encryption = KeyEncryption {
             header: Header {
                 alg: KeyAlgorithm::EcdhEs,
@@ -184,7 +182,7 @@ impl<T: Serialize + Send> JweBuilder<WithPayload<'_, T>, WithRecipients> {
                 apu: None,
                 apv: None,
             },
-            encrypted_key: Base64UrlUnpadded::encode_string(&[0; 32]),
+            encrypted_key: Base64UrlUnpadded::encode_string(&encrypted_key),
         };
 
         Ok(Jwe {
@@ -211,27 +209,24 @@ impl<T: Serialize + Send> JweBuilder<WithPayload<'_, T>, WithRecipients> {
         // generate the CEK
         let cek = Aes256Gcm::generate_key(&mut OsRng);
 
-        // encrypt plaintext using the CEK, initialization vector, and AAD
+        // encrypt plaintext
         let mut buffer = serde_json::to_vec(self.payload.0)?;
         let tag = Aes256Gcm::new(&cek)
             .encrypt_in_place_detached(&iv, aad.as_bytes(), &mut buffer)
             .map_err(|e| anyhow!("issue encrypting: {e}"))?;
 
-        // encrypt CEK per recipient using ECDH-ES+AES256GCM
+        // encrypt CEK per recipient using ECDH-ES+A256KW
         let mut encrypted_ceks = vec![];
         for r in recipients {
-            let public_key = PublicKey::from(r.public_key);
-
-            // derive shared secret using ECDH-ES
+            // derive shared secret
             let ephemeral_secret = EphemeralSecret::random_from_rng(rand::thread_rng());
             let ephemeral_public = PublicKey::from(&ephemeral_secret);
-            let shared_key = ephemeral_secret.diffie_hellman(&public_key);
+            let shared_key = ephemeral_secret.diffie_hellman(&PublicKey::from(r.public_key));
 
-            // wrap CEK using shared secret and Aes256KW
-            let wrapped_key = Kek::from(*shared_key.as_bytes())
+            // encrypt (wrap) CEK
+            let encrypted_key = Kek::from(*shared_key.as_bytes())
                 .wrap_vec(&cek)
                 .map_err(|e| anyhow!("issue wrapping cek: {e}"))?;
-            let encrypted_key = Base64UrlUnpadded::encode_string(&wrapped_key);
 
             encrypted_ceks.push(KeyEncryption {
                 header: Header {
@@ -246,7 +241,7 @@ impl<T: Serialize + Send> JweBuilder<WithPayload<'_, T>, WithRecipients> {
                     apu: None,
                     apv: None,
                 },
-                encrypted_key,
+                encrypted_key: Base64UrlUnpadded::encode_string(&encrypted_key),
             });
         }
 
@@ -276,4 +271,8 @@ impl<T: Serialize + Send> JweBuilder<WithPayload<'_, T>, WithRecipients> {
     }
 }
 
-impl Jwe {}
+struct EncryptOne<'a, T: Serialize + Send> {
+    builder: JweBuilder<WithPayload<'a, T>, WithRecipients>,
+    cek: Key<Aes256Gcm>,
+    iv: [u8; 12],
+}
