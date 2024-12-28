@@ -181,11 +181,9 @@ impl<T: Serialize + Send> JweBuilder<WithPayload<'_, T>, WithRecipients> {
     /// LATER: add error docs
     pub fn build(self) -> Result<Jwe> {
         if self.recipients.0.len() == 1 {
-            let mut alg = EcdhEs::from(&self);
-            self.encrypt(&mut alg)
+            self.encrypt(&mut EcdhEs::from(&self))
         } else {
-            let mut alg = EcdhEsA256Kw::from(&self);
-            self.encrypt(&mut alg)
+            self.encrypt(&mut EcdhEsA256Kw::from(&self))
         }
     }
 }
@@ -203,35 +201,29 @@ trait Algorithm {
 // ----------------------------------------------------------------------------
 // ECDH-ES: Key Management Algorithm
 // ----------------------------------------------------------------------------
-struct EcdhEs<'a, T: Serialize + Send> {
-    builder: &'a JweBuilder<WithPayload<'a, T>, WithRecipients>,
-    ephemeral_public: PublicKey,
+struct EcdhEs {
+    recipient_public: [u8; 32],
+    ephemeral_public: [u8; 32], //PublicKey,
 }
 
-impl<'a, T: Serialize + Send> From<&'a JweBuilder<WithPayload<'a, T>, WithRecipients>>
-    for EcdhEs<'a, T>
-{
+impl<'a, T: Serialize + Send> From<&'a JweBuilder<WithPayload<'a, T>, WithRecipients>> for EcdhEs {
     fn from(builder: &'a JweBuilder<WithPayload<'a, T>, WithRecipients>) -> Self {
-        EcdhEs {
-            builder,
-            ephemeral_public: PublicKey::from([0; 32]),
+        let recipients = &builder.recipients.0;
+        Self {
+            recipient_public: recipients[0].public_key,
+            ephemeral_public: [0; 32],
         }
     }
 }
 
-impl<T: Serialize + Send> Algorithm for EcdhEs<'_, T> {
+impl Algorithm for EcdhEs {
     fn cek(&mut self) -> [u8; 32] {
-        let recipients = &self.builder.recipients.0;
-
         let ephemeral_secret = EphemeralSecret::random_from_rng(rand::thread_rng());
-        self.ephemeral_public = PublicKey::from(&ephemeral_secret);
-
-        ephemeral_secret.diffie_hellman(&PublicKey::from(recipients[0].public_key)).to_bytes()
+        self.ephemeral_public = PublicKey::from(&ephemeral_secret).to_bytes();
+        ephemeral_secret.diffie_hellman(&PublicKey::from(self.recipient_public)).to_bytes()
     }
 
     fn recipients(&self) -> Result<Recipients> {
-        let encrypted_key = [0; 32];
-
         let key_encryption = KeyEncryption {
             header: Header {
                 alg: KeyAlgorithm::EcdhEs,
@@ -239,13 +231,12 @@ impl<T: Serialize + Send> Algorithm for EcdhEs<'_, T> {
                 epk: PublicKeyJwk {
                     kty: KeyType::Okp,
                     crv: Curve::Ed25519,
-                    x: Base64UrlUnpadded::encode_string(self.ephemeral_public.as_bytes()),
+                    x: Base64UrlUnpadded::encode_string(&self.ephemeral_public),
                     ..PublicKeyJwk::default()
                 },
-                apu: None,
-                apv: None,
+                ..Header::default()
             },
-            encrypted_key: Base64UrlUnpadded::encode_string(&encrypted_key),
+            encrypted_key: Base64UrlUnpadded::encode_string(&[0; 32]),
         };
 
         Ok(Recipients::One(key_encryption))
@@ -255,23 +246,23 @@ impl<T: Serialize + Send> Algorithm for EcdhEs<'_, T> {
 // ----------------------------------------------------------------------------
 // ECDH-ES+A256KW: Key Management Algorithm
 // ----------------------------------------------------------------------------
-struct EcdhEsA256Kw<'a, T: Serialize + Send> {
-    builder: &'a JweBuilder<WithPayload<'a, T>, WithRecipients>,
+struct EcdhEsA256Kw<'a> {
+    recipients: &'a [Recipient],
     cek: [u8; 32],
 }
 
 impl<'a, T: Serialize + Send> From<&'a JweBuilder<WithPayload<'a, T>, WithRecipients>>
-    for EcdhEsA256Kw<'a, T>
+    for EcdhEsA256Kw<'a>
 {
     fn from(builder: &'a JweBuilder<WithPayload<'a, T>, WithRecipients>) -> Self {
         EcdhEsA256Kw {
-            builder,
+            recipients: &builder.recipients.0,
             cek: [0; 32],
         }
     }
 }
 
-impl<T: Serialize + Send> Algorithm for EcdhEsA256Kw<'_, T> {
+impl Algorithm for EcdhEsA256Kw<'_> {
     fn cek(&mut self) -> [u8; 32] {
         let cek = Aes256Gcm::generate_key(&mut OsRng);
         self.cek = cek.into();
@@ -279,10 +270,9 @@ impl<T: Serialize + Send> Algorithm for EcdhEsA256Kw<'_, T> {
     }
 
     fn recipients(&self) -> Result<Recipients> {
-        let recipients = &self.builder.recipients.0;
-        let mut encrypted_ceks = vec![];
+        let mut recipients = vec![];
 
-        for r in recipients {
+        for r in self.recipients {
             // derive shared secret
             let ephemeral_secret = EphemeralSecret::random_from_rng(rand::thread_rng());
             let ephemeral_public = PublicKey::from(&ephemeral_secret);
@@ -293,7 +283,7 @@ impl<T: Serialize + Send> Algorithm for EcdhEsA256Kw<'_, T> {
                 .wrap_vec(&self.cek)
                 .map_err(|e| anyhow!("issue wrapping cek: {e}"))?;
 
-            encrypted_ceks.push(KeyEncryption {
+            recipients.push(KeyEncryption {
                 header: Header {
                     alg: KeyAlgorithm::EcdhEsA256Kw,
                     kid: Some(r.key_id.clone()),
@@ -310,8 +300,6 @@ impl<T: Serialize + Send> Algorithm for EcdhEsA256Kw<'_, T> {
             });
         }
 
-        Ok(Recipients::Many {
-            recipients: encrypted_ceks,
-        })
+        Ok(Recipients::Many { recipients })
     }
 }
