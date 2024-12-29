@@ -336,10 +336,6 @@ pub enum KeyAlgorithm {
     /// Uses AES 256 GCM and HKDF-SHA256.
     #[serde(rename = "ECIES-ES256K")]
     EciesSecp256k1,
-    //
-    // /// A256CTR
-    // #[serde(rename = "A256CTR")]
-    // A256Ctr,
 }
 
 /// The algorithm used to perform authenticated content encryption. That is,
