@@ -79,11 +79,14 @@ pub trait Cipher: Send + Sync {
     /// Recipient's public key.
     fn public_key(&self) -> Vec<u8>;
 
-    /// Generate a Diffie-Hellman shared secret using the recipient's private
-    /// key and sender's public key.
-    fn diffie_hellman(
-        &self, sender_public: &[u8],
-    ) -> impl Future<Output = anyhow::Result<Vec<u8>>> + Send;
+    /// Recipient's public key identifier.
+    fn key_id(&self) -> String;
+
+    /// Derive the Content Encryption Key using the recipient's private key
+    /// and sender's public key.
+    fn shared_secret(
+        &self, sender_public: [u8;32],
+    ) -> impl Future<Output = [u8;32]> + Send;
 }
 
 /// Cryptographic key type.
@@ -114,4 +117,3 @@ pub enum Curve {
     #[serde(rename = "ES256K", alias = "secp256k1")]
     Es256K,
 }
-

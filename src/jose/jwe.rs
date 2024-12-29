@@ -54,11 +54,13 @@ use std::str::FromStr;
 
 use aes_gcm::aead::KeyInit; // heapless,
 use aes_gcm::{AeadInPlace, Aes256Gcm, Key, Nonce, Tag};
+use aes_kw::Kek;
 use anyhow::{anyhow, Result};
 use base64ct::{Base64UrlUnpadded, Encoding};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 pub use self::builder::{JweBuilder, NoPayload, NoRecipients, WithPayload, WithRecipients};
 use crate::jose::jwk::PublicKeyJwk;
@@ -87,18 +89,39 @@ pub fn encrypt<T: Serialize + Send>(plaintext: &T, recipient_public: &[u8; 32]) 
 ///
 /// Returns an error if the JWE cannot be decrypted.
 pub async fn decrypt<T: DeserializeOwned>(jwe: &Jwe, cipher: &impl Cipher) -> Result<T> {
-    let Recipients::One(recipient) = &jwe.recipients else {
-        return Err(anyhow!("invalid number of recipients"));
+    let recipient = match &jwe.recipients {
+        Recipients::One(recipient) => recipient,
+        Recipients::Many { recipients } => {
+            let Some(found) = recipients.iter().find(|r| r.header.kid == Some(cipher.key_id()))
+            else {
+                return Err(anyhow!("no recipient found"));
+            };
+            found
+        }
     };
 
     // get sender's ephemeral public key (used in key agreement)
     let sender_public = Base64UrlUnpadded::decode_vec(&recipient.header.epk.x)
         .map_err(|e| anyhow!("issue decoding sender public key `x`: {e}"))?;
-    let sender_key: [u8; 32] = sender_public.as_slice().try_into()?;
-    let sender_public = x25519_dalek::PublicKey::from(sender_key);
+    let sender_public: [u8; 32] = sender_public.as_slice().try_into()?;
 
-    // compute CEK using recipient's private key and sender's public key
-    let cek = cipher.diffie_hellman(sender_public.as_bytes()).await?;
+    // derive shared_secret from recipient's private key and sender's public key
+    let shared_secret = cipher.shared_secret(sender_public).await;
+
+    let cek = match recipient.header.alg {
+        KeyAlgorithm::EcdhEs => shared_secret,
+        KeyAlgorithm::EcdhEsA256Kw => {
+            let encrypted_key = Base64UrlUnpadded::decode_vec(&recipient.encrypted_key)
+                .map_err(|e| anyhow!("issue decoding `encrypted_key`: {e}"))?;
+
+            Kek::from(shared_secret)
+                .unwrap_vec(encrypted_key.as_slice())
+                .map_err(|e| anyhow!("issue wrapping cek: {e}"))?
+                .try_into()
+                .map_err(|_| anyhow!("issue wrapping cek"))?
+        }
+        _ => return Err(anyhow!("unsupported key algorithm")),
+    };
 
     // unpack JWE
     let iv =
@@ -370,9 +393,41 @@ pub enum Zip {
     Deflate,
 }
 
+/// A short-lived secret key that can only be used to compute a single
+/// SharedSecret.
+///
+/// The [`SecretKey::diffie_hellman`] method consumes and then wipes the secret
+/// key. where the compiler statically checks that the resulting secret is
+/// used at most once.
+///
+/// There are no serialization methods defined, meaning the [`SecretKey`]
+/// can only be generated from a fresh instance.
+#[derive(Zeroize, ZeroizeOnDrop)]
+pub struct SecretKey([u8; 32]);
+
+impl From<[u8; 32]> for SecretKey {
+    fn from(key: [u8; 32]) -> Self {
+        Self(key)
+    }
+}
+
+impl SecretKey {
+    /// Derive a shared secret from the secret key and the sender's public key
+    // to produce a [`SharedSecret`].
+    pub fn shared_secret(self, sender_public: [u8; 32]) -> [u8; 32] {
+        //SharedSecret(their_public.0.mul_clamped(self.0))
+
+        // derive [`SharedSecret`] using a Diffie-Hellman key agreement
+        let sender_public = x25519_dalek::PublicKey::from(sender_public);
+        let secret = x25519_dalek::StaticSecret::from(self.0);
+        let shared_secret = secret.diffie_hellman(&sender_public);
+
+        shared_secret.to_bytes()
+    }
+}
+
 #[cfg(test)]
 mod test {
-    // use rand::rngs::OsRng;
     use x25519_dalek::StaticSecret;
 
     use super::*;
@@ -458,10 +513,10 @@ mod test {
         let public_key: [u8; 32] = key_store.public_key().try_into().expect("should convert");
 
         let jwe = JweBuilder::new()
-            .content_algorithm(ContentAlgorithm::A256Gcm)
-            .key_algorithm(KeyAlgorithm::EcdhEsA256Kw)
+            // .content_algorithm(ContentAlgorithm::A256Gcm)
+            // .key_algorithm(KeyAlgorithm::EcdhEsA256Kw)
             .payload(&plaintext)
-            .add_recipient("".to_string(), public_key)
+            .add_recipient(key_store.key_id(), public_key)
             .build()
             .expect("should encrypt");
 
@@ -495,11 +550,13 @@ mod test {
             x25519_dalek::PublicKey::from(&self.recipient_secret).as_bytes().to_vec()
         }
 
-        async fn diffie_hellman(&self, sender_public: &[u8]) -> Result<Vec<u8>> {
-            let sender_key: [u8; 32] = sender_public.try_into()?;
-            let sender_public = x25519_dalek::PublicKey::from(sender_key);
-            let shared_secret = self.recipient_secret.diffie_hellman(&sender_public);
-            Ok(shared_secret.as_bytes().to_vec())
+        fn key_id(&self) -> String {
+            "key-id".to_string()
+        }
+
+        async fn shared_secret(&self, sender_public: [u8; 32]) -> [u8; 32] {
+            let secret_key = SecretKey::from(self.recipient_secret.to_bytes());
+            secret_key.shared_secret(sender_public)
         }
     }
 }

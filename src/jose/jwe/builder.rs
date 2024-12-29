@@ -11,6 +11,7 @@ use ecies::consts::{AEAD_TAG_LENGTH, NONCE_LENGTH, UNCOMPRESSED_PUBLIC_KEY_SIZE}
 use rand::rngs::OsRng;
 use serde::Serialize;
 use x25519_dalek::{EphemeralSecret, PublicKey};
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use super::{ContentAlgorithm, Header, Jwe, KeyAlgorithm, KeyEncryption, Protected, Recipients};
 use crate::jose::jwk::PublicKeyJwk;
@@ -222,6 +223,7 @@ trait Algorithm {
 // ----------------
 // ECDH-ES
 // ----------------
+#[derive(Zeroize, ZeroizeOnDrop)]
 struct EcdhEs {
     ephemeral_public: [u8; 32],
     cek: [u8; 32],
@@ -270,7 +272,9 @@ impl Algorithm for EcdhEs {
 // ----------------
 // ECDH-ES+A256KW
 // ----------------
+#[derive(Zeroize, ZeroizeOnDrop)]
 struct EcdhEsA256Kw<'a> {
+    #[zeroize(skip)]
     recipients: &'a [Recipient],
     cek: [u8; 32],
 }
@@ -296,10 +300,10 @@ impl Algorithm for EcdhEsA256Kw<'_> {
             // derive shared secret
             let ephemeral_secret = EphemeralSecret::random_from_rng(rand::thread_rng());
             let ephemeral_public = PublicKey::from(&ephemeral_secret);
-            let shared_key = ephemeral_secret.diffie_hellman(&PublicKey::from(r.public_key));
+            let shared_secret = ephemeral_secret.diffie_hellman(&PublicKey::from(r.public_key));
 
             // encrypt (wrap) CEK
-            let encrypted_key = Kek::from(*shared_key.as_bytes())
+            let encrypted_key = Kek::from(*shared_secret.as_bytes())
                 .wrap_vec(&self.cek)
                 .map_err(|e| anyhow!("issue wrapping cek: {e}"))?;
 
@@ -327,7 +331,9 @@ impl Algorithm for EcdhEsA256Kw<'_> {
 // ECIES-ES256K (example code only)
 // ----------------
 // TODO: implement ECIES-ES256K
+#[derive(Zeroize, ZeroizeOnDrop)]
 struct EciesEs256K<'a> {
+    #[zeroize(skip)]
     recipients: &'a [Recipient],
     cek: [u8; 32],
 }
@@ -367,21 +373,21 @@ impl Algorithm for EciesEs256K<'_> {
             // ----------------------------------------------------------------
             // The following code is the longer route to the same result.
             // ----------------------------------------------------------------
-            // derive shared secret
+            // // derive shared secret
             // let (ephemeral_secret, ephemeral_public) = ecies::utils::generate_keypair();
-            // let shared_key = ecies::utils::encapsulate(
+            // let shared_secret = ecies::utils::encapsulate(
             //     &ephemeral_secret,
             //     &ecies::PublicKey::parse(&public_key)?,
             // )?;
-
-            // encrypt (wrap) CEK
+            //
+            // // encrypt (wrap) CEK
             // let iv = Aes256Gcm::generate_nonce(&mut OsRng);
             // let mut buffer = self.cek;
-            // let tag = Aes256Gcm::new(&shared_key.into())
+            // let tag = Aes256Gcm::new(&shared_secret.into())
             //     .encrypt_in_place_detached(&iv, &[], &mut buffer)
             //     .map_err(|e| anyhow!("issue encrypting: {e}"))?;
 
-            // x and y are 32 bytes each
+            // // x and y are 32 bytes each
             // let ephemeral_public = ephemeral_public.serialize();
             // ----------------------------------------------------------------
 
