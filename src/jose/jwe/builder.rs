@@ -320,6 +320,8 @@ impl<'a> From<&'a [Recipient]> for EciesSecp256k1<'a> {
     }
 }
 
+use ecies::consts::{AEAD_TAG_LENGTH, NONCE_LENGTH, UNCOMPRESSED_PUBLIC_KEY_SIZE};
+
 impl Algorithm for EciesSecp256k1<'_> {
     fn cek(&mut self) -> [u8; 32] {
         let cek = Aes256Gcm::generate_key(&mut OsRng);
@@ -334,18 +336,37 @@ impl Algorithm for EciesSecp256k1<'_> {
             // FIXME: replace with actual public key
             let public_key = [0; 65];
 
+            // encrypt CEK using ECIES derived shared secret
+            let encrypted = ecies::encrypt(&public_key, &self.cek)?;
+            if encrypted.len() != UNCOMPRESSED_PUBLIC_KEY_SIZE + NONCE_LENGTH + AEAD_TAG_LENGTH {
+                return Err(anyhow!("invalid encrypted key length"));
+            }
+
+            // extract components
+            let (ephemeral_public, remaining) = encrypted.split_at(UNCOMPRESSED_PUBLIC_KEY_SIZE);
+            let (_iv, remaining) = remaining.split_at(NONCE_LENGTH);
+            let (_tag, encrypted_key) = remaining.split_at(AEAD_TAG_LENGTH);
+
+            // ----------------------------------------------------------------
+            // The following code is the longer route to the same result.
+            // ----------------------------------------------------------------
             // derive shared secret
-            let (ephemeral_secret, ephemeral_public) = ecies::utils::generate_keypair();
+            // let (ephemeral_secret, ephemeral_public) = ecies::utils::generate_keypair();
+            // let shared_key = ecies::utils::encapsulate(
+            //     &ephemeral_secret,
+            //     &ecies::PublicKey::parse(&public_key)?,
+            // )?;
 
             // encrypt (wrap) CEK
-            let aes_key = ecies::utils::encapsulate(
-                &ephemeral_secret,
-                &ecies::PublicKey::parse(&public_key)?,
-            )?;
-            let encrypted_key = ecies::symmetric::sym_encrypt(&aes_key, &self.cek)
-                .ok_or_else(|| anyhow!("issue wrapping cek"))?;
+            // let iv = Aes256Gcm::generate_nonce(&mut OsRng);
+            // let mut buffer = self.cek;
+            // let tag = Aes256Gcm::new(&shared_key.into())
+            //     .encrypt_in_place_detached(&iv, &[], &mut buffer)
+            //     .map_err(|e| anyhow!("issue encrypting: {e}"))?;
 
-            let ephemeral_public = ephemeral_public.serialize();
+            // x and y are 32 bytes each
+            // let ephemeral_public = ephemeral_public.serialize();
+            // ----------------------------------------------------------------
 
             recipients.push(KeyEncryption {
                 header: Header {
@@ -358,9 +379,11 @@ impl Algorithm for EciesSecp256k1<'_> {
                         y: Some(Base64UrlUnpadded::encode_string(&ephemeral_public[33..65])),
                         ..PublicKeyJwk::default()
                     },
+                    // iv: Some(Base64UrlUnpadded::encode_string(&iv)),
+                    // tag: Some(Base64UrlUnpadded::encode_string(&tag)),
                     ..Header::default()
                 },
-                encrypted_key: Base64UrlUnpadded::encode_string(&encrypted_key),
+                encrypted_key: Base64UrlUnpadded::encode_string(encrypted_key),
             });
         }
 
