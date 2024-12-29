@@ -6,6 +6,8 @@ use aes_gcm::{AeadCore, AeadInPlace, Aes256Gcm}; //, Nonce, Tag};
 use aes_kw::Kek;
 use anyhow::{anyhow, Result};
 use base64ct::{Base64UrlUnpadded, Encoding};
+use chacha20poly1305::XChaCha20Poly1305;
+use ecies::consts::{AEAD_TAG_LENGTH, NONCE_LENGTH, UNCOMPRESSED_PUBLIC_KEY_SIZE};
 use rand::rngs::OsRng;
 use serde::Serialize;
 use x25519_dalek::{EphemeralSecret, PublicKey};
@@ -16,8 +18,8 @@ use crate::{Curve, KeyType};
 
 /// Builds a JWE object using provided options.
 pub struct JweBuilder<P, R> {
-    content_algorithm: Option<ContentAlgorithm>,
-    key_algorithm: Option<KeyAlgorithm>,
+    content_algorithm: ContentAlgorithm,
+    key_algorithm: KeyAlgorithm,
     payload: P,
     pub(crate) recipients: R,
 }
@@ -58,8 +60,8 @@ impl JweBuilder<NoPayload, NoRecipients> {
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            content_algorithm: None,
-            key_algorithm: None,
+            content_algorithm: ContentAlgorithm::A256Gcm,
+            key_algorithm: KeyAlgorithm::EcdhEs,
             payload: NoPayload,
             recipients: NoRecipients,
         }
@@ -70,14 +72,14 @@ impl<P, R> JweBuilder<P, R> {
     /// The content encryption algorithm to use to encrypt the payload.
     #[must_use]
     pub const fn content_algorithm(mut self, algorithm: ContentAlgorithm) -> Self {
-        self.content_algorithm = Some(algorithm);
+        self.content_algorithm = algorithm;
         self
     }
 
     /// The key management algorithm to use for encrypting the JWE CEK.
     #[must_use]
     pub const fn key_algorithm(mut self, algorithm: KeyAlgorithm) -> Self {
-        self.key_algorithm = Some(algorithm);
+        self.key_algorithm = algorithm;
         self
     }
 }
@@ -145,36 +147,6 @@ impl<R> JweBuilder<NoPayload, R> {
 }
 
 impl<T: Serialize + Send> JweBuilder<WithPayload<'_, T>, WithRecipients> {
-    fn encrypt(&self, alg: &mut impl Algorithm) -> Result<Jwe> {
-        let protected = Protected {
-            enc: ContentAlgorithm::A256Gcm,
-            alg: None,
-        };
-        let aad = Base64UrlUnpadded::encode_string(&serde_json::to_vec(&protected)?);
-        let iv = Aes256Gcm::generate_nonce(&mut OsRng);
-
-        let cek = alg.cek();
-
-        // encrypt plaintext
-        let mut buffer = serde_json::to_vec(self.payload.0)?;
-        let tag = Aes256Gcm::new(&cek.into())
-            .encrypt_in_place_detached(&iv, aad.as_bytes(), &mut buffer)
-            .map_err(|e| anyhow!("issue encrypting: {e}"))?;
-
-        // zero-ized key
-        let recipients = alg.recipients()?;
-
-        Ok(Jwe {
-            protected,
-            unprotected: None,
-            recipients,
-            iv: Base64UrlUnpadded::encode_string(&iv),
-            ciphertext: Base64UrlUnpadded::encode_string(&buffer),
-            tag: Base64UrlUnpadded::encode_string(&tag),
-            aad,
-        })
-    }
-
     /// Build the JWE.
     ///
     /// # Errors
@@ -182,11 +154,58 @@ impl<T: Serialize + Send> JweBuilder<WithPayload<'_, T>, WithRecipients> {
     pub fn build(self) -> Result<Jwe> {
         let recipients = self.recipients.0.as_slice();
 
-        if recipients.len() == 1 {
-            self.encrypt(&mut EcdhEs::from(recipients))
-        } else {
-            self.encrypt(&mut EcdhEsA256Kw::from(recipients))
+        // select key management algorithm
+        match self.key_algorithm {
+            KeyAlgorithm::EcdhEs => {
+                if recipients.len() != 1 {
+                    return Err(anyhow!("too many recipients for ECDH-ES without A256KW"));
+                }
+                self.encrypt(&EcdhEs::from(recipients))
+            }
+            KeyAlgorithm::EcdhEsA256Kw => self.encrypt(&EcdhEsA256Kw::from(recipients)),
+            KeyAlgorithm::EciesEs256K => self.encrypt(&EciesEs256K::from(recipients)),
         }
+    }
+
+    fn encrypt(&self, alg: &impl Algorithm) -> Result<Jwe> {
+        let mut jwe = Jwe {
+            protected: Protected {
+                enc: self.content_algorithm.clone(),
+                alg: None,
+            },
+            recipients: alg.recipients()?,
+            ..Jwe::default()
+        };
+
+        let aad = serde_json::to_vec(&jwe.protected)?;
+        jwe.aad = Base64UrlUnpadded::encode_string(&aad);
+
+        // encrypt plaintext
+        let mut buffer = serde_json::to_vec(self.payload.0)?;
+
+        // select content encryption algorithm
+        let (nonce, tag) = match self.content_algorithm {
+            ContentAlgorithm::A256Gcm => {
+                let nonce = Aes256Gcm::generate_nonce(&mut rand::thread_rng());
+                let tag = Aes256Gcm::new(&alg.cek().into())
+                    .encrypt_in_place_detached(&nonce, &aad, &mut buffer)
+                    .map_err(|e| anyhow!("issue encrypting: {e}"))?;
+                (nonce.to_vec(), tag.to_vec())
+            }
+            ContentAlgorithm::XChaCha20Poly1305 => {
+                let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
+                let tag = XChaCha20Poly1305::new(&alg.cek().into())
+                    .encrypt_in_place_detached(&nonce, &aad, &mut buffer)
+                    .map_err(|e| anyhow!("issue encrypting: {e}"))?;
+                (nonce.to_vec(), tag.to_vec())
+            }
+        };
+
+        jwe.iv = Base64UrlUnpadded::encode_string(&nonce);
+        jwe.tag = Base64UrlUnpadded::encode_string(&tag);
+        jwe.ciphertext = Base64UrlUnpadded::encode_string(&buffer);
+
+        Ok(jwe)
     }
 }
 
@@ -194,7 +213,7 @@ impl<T: Serialize + Send> JweBuilder<WithPayload<'_, T>, WithRecipients> {
 // Management Algorithms ("alg" parameter).
 trait Algorithm {
     // Generate a Content Encryption Key (CEK) for the JWE.
-    fn cek(&mut self) -> [u8; 32];
+    fn cek(&self) -> [u8; 32];
 
     // Generate the key encryption material for the JWE recipients.
     fn recipients(&self) -> Result<Recipients>;
@@ -204,24 +223,28 @@ trait Algorithm {
 // ECDH-ES
 // ----------------
 struct EcdhEs {
-    recipient_public: [u8; 32],
     ephemeral_public: [u8; 32],
+    cek: [u8; 32],
 }
 
 impl From<&[Recipient]> for EcdhEs {
     fn from(recipients: &[Recipient]) -> Self {
+        // generate CEK using ECDH-ES
+        let ephemeral_secret = EphemeralSecret::random_from_rng(rand::thread_rng());
+        let ephemeral_public = PublicKey::from(&ephemeral_secret).to_bytes();
+        let cek =
+            ephemeral_secret.diffie_hellman(&PublicKey::from(recipients[0].public_key)).to_bytes();
+
         Self {
-            recipient_public: recipients[0].public_key,
-            ephemeral_public: [0; 32],
+            ephemeral_public,
+            cek,
         }
     }
 }
 
 impl Algorithm for EcdhEs {
-    fn cek(&mut self) -> [u8; 32] {
-        let ephemeral_secret = EphemeralSecret::random_from_rng(rand::thread_rng());
-        self.ephemeral_public = PublicKey::from(&ephemeral_secret).to_bytes();
-        ephemeral_secret.diffie_hellman(&PublicKey::from(self.recipient_public)).to_bytes()
+    fn cek(&self) -> [u8; 32] {
+        self.cek
     }
 
     fn recipients(&self) -> Result<Recipients> {
@@ -256,15 +279,13 @@ impl<'a> From<&'a [Recipient]> for EcdhEsA256Kw<'a> {
     fn from(recipients: &'a [Recipient]) -> Self {
         Self {
             recipients,
-            cek: [0; 32],
+            cek: Aes256Gcm::generate_key(&mut rand::thread_rng()).into(),
         }
     }
 }
 
 impl Algorithm for EcdhEsA256Kw<'_> {
-    fn cek(&mut self) -> [u8; 32] {
-        let cek = Aes256Gcm::generate_key(&mut OsRng);
-        self.cek = cek.into();
+    fn cek(&self) -> [u8; 32] {
         self.cek
     }
 
@@ -306,26 +327,22 @@ impl Algorithm for EcdhEsA256Kw<'_> {
 // ECIES-ES256K (example code only)
 // ----------------
 // TODO: implement ECIES-ES256K
-struct EciesSecp256k1<'a> {
+struct EciesEs256K<'a> {
     recipients: &'a [Recipient],
     cek: [u8; 32],
 }
 
-impl<'a> From<&'a [Recipient]> for EciesSecp256k1<'a> {
+impl<'a> From<&'a [Recipient]> for EciesEs256K<'a> {
     fn from(recipients: &'a [Recipient]) -> Self {
         Self {
             recipients,
-            cek: [0; 32],
+            cek: Aes256Gcm::generate_key(&mut rand::thread_rng()).into(),
         }
     }
 }
 
-use ecies::consts::{AEAD_TAG_LENGTH, NONCE_LENGTH, UNCOMPRESSED_PUBLIC_KEY_SIZE};
-
-impl Algorithm for EciesSecp256k1<'_> {
-    fn cek(&mut self) -> [u8; 32] {
-        let cek = Aes256Gcm::generate_key(&mut OsRng);
-        self.cek = cek.into();
+impl Algorithm for EciesEs256K<'_> {
+    fn cek(&self) -> [u8; 32] {
         self.cek
     }
 

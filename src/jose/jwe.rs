@@ -105,16 +105,16 @@ pub async fn decrypt<T: DeserializeOwned>(jwe: &Jwe, cipher: &impl Cipher) -> Re
         Base64UrlUnpadded::decode_vec(&jwe.iv).map_err(|e| anyhow!("issue decoding `iv`: {e}"))?;
     let tag = Base64UrlUnpadded::decode_vec(&jwe.tag)
         .map_err(|e| anyhow!("issue decoding `tag`: {e}"))?;
+    let aad = Base64UrlUnpadded::decode_vec(&jwe.aad)
+        .map_err(|e| anyhow!("issue decoding `aad`: {e}"))?;
     let ciphertext = Base64UrlUnpadded::decode_vec(&jwe.ciphertext)
         .map_err(|e| anyhow!("issue decoding `ciphertext`: {e}"))?;
 
     // decrypt ciphertext using CEK, iv, aad, and tag
     let mut buffer = ciphertext;
-    let nonce = Nonce::from_slice(&iv);
-    let tag = Tag::from_slice(&tag);
 
     Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&cek))
-        .decrypt_in_place_detached(nonce, jwe.aad.as_bytes(), &mut buffer, tag)
+        .decrypt_in_place_detached(Nonce::from_slice(&iv), &aad, &mut buffer, Tag::from_slice(&tag))
         .map_err(|e| anyhow!("issue decrypting: {e}"))?;
 
     Ok(serde_json::from_slice(&buffer)?)
@@ -197,17 +197,21 @@ impl FromStr for Jwe {
             return Err(anyhow!("invalid JWE"));
         }
 
+        // unpack flattened Protected header
         let bytes = Base64UrlUnpadded::decode_vec(parts[0]).map_err(|_| fmt::Error)?;
         let protected: ProtectedFlat = serde_json::from_slice(&bytes).map_err(|_| fmt::Error)?;
+
+        // reconstruct fields
         let enc = protected.inner.enc;
         let alg = protected.inner.alg.unwrap_or_default();
         let epk = protected.epk;
 
+        // calculate AAD
+        let protected = Protected { alg: None, enc };
+        let aad_bytes = serde_json::to_vec(&protected).map_err(|_| fmt::Error)?;
+
         Ok(Self {
-            protected: Protected {
-                enc,
-                ..Protected::default()
-            },
+            protected,
             recipients: Recipients::One(KeyEncryption {
                 header: Header {
                     alg,
@@ -216,6 +220,7 @@ impl FromStr for Jwe {
                 },
                 encrypted_key: parts[1].to_string(),
             }),
+            aad: Base64UrlUnpadded::encode_string(&aad_bytes),
             iv: parts[2].to_string(),
             ciphertext: parts[3].to_string(),
             tag: parts[4].to_string(),
@@ -335,7 +340,7 @@ pub enum KeyAlgorithm {
     /// Elliptic Curve Integrated Encryption Scheme for secp256k1.
     /// Uses AES 256 GCM and HKDF-SHA256.
     #[serde(rename = "ECIES-ES256K")]
-    EciesSecp256k1,
+    EciesEs256K,
 }
 
 /// The algorithm used to perform authenticated content encryption. That is,
@@ -347,13 +352,13 @@ pub enum ContentAlgorithm {
     #[default]
     #[serde(rename = "A256GCM")]
     A256Gcm,
-    //
-    // /// XChaCha20-Poly1305 is a competitive alternative to AES-256-GCM because
-    // /// it’s fast and constant-time without hardware acceleration (resistent
-    // /// to cache-timing attacks). It also has longer nonce length to alleviate
-    // /// the risk of birthday attacks when nonces are generated randomly.
-    // #[serde(rename = "XChacha20+Poly1305")]
-    // XChacha20Poly1305,
+
+    /// XChaCha20-Poly1305 is a competitive alternative to AES-256-GCM because
+    /// it’s fast and constant-time without hardware acceleration (resistent
+    /// to cache-timing attacks). It also has longer nonce length to alleviate
+    /// the risk of birthday attacks when nonces are generated randomly.
+    #[serde(rename = "XChacha20+Poly1305")]
+    XChaCha20Poly1305,
 }
 
 /// The compression algorithm applied to the plaintext before encryption.
@@ -367,7 +372,8 @@ pub enum Zip {
 
 #[cfg(test)]
 mod test {
-    use rand::rngs::OsRng;
+    // use rand::rngs::OsRng;
+    use x25519_dalek::StaticSecret;
 
     use super::*;
 
@@ -407,15 +413,37 @@ mod test {
     // 	"tag": "Mz-VPPyU4RlcuYv1IwIvzw"
     // }
 
-    // round trip: encrypt and then decrypt
+    // Use top-level encrypt method to shortcut using the builder
     #[tokio::test]
-    async fn round_trip() {
+    async fn simple() {
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
 
         let key_store = KeyStore::new();
         let public_key: [u8; 32] = key_store.public_key().try_into().expect("should convert");
 
         let jwe = encrypt(&plaintext, &public_key).expect("should encrypt");
+        let decrypted: String = decrypt(&jwe, &key_store).await.expect("should decrypt");
+        assert_eq!(plaintext, decrypted);
+
+        println!("JWE: {}", jwe.to_string());
+    }
+
+    // Compact serialization/deserialization
+    #[tokio::test]
+    async fn compact() {
+        let plaintext = "The true sign of intelligence is not knowledge but imagination.";
+
+        let key_store = KeyStore::new();
+        let public_key: [u8; 32] = key_store.public_key().try_into().expect("should convert");
+
+        let jwe = encrypt(&plaintext, &public_key).expect("should encrypt");
+        println!("JWE: {:?}\n", jwe);
+
+        let compact_jwe = jwe.to_string();
+
+        let jwe: Jwe = compact_jwe.parse().expect("should parse");
+        println!("JWE: {:?}", jwe);
+
         let decrypted: String = decrypt(&jwe, &key_store).await.expect("should decrypt");
 
         assert_eq!(plaintext, decrypted);
@@ -430,8 +458,8 @@ mod test {
         let public_key: [u8; 32] = key_store.public_key().try_into().expect("should convert");
 
         let jwe = JweBuilder::new()
-            // .data_algorithm(ContentAlgorithm::A256Gcm)
-            // .key_algorithm(KeyAlgorithm::EcdhEs)
+            .content_algorithm(ContentAlgorithm::A256Gcm)
+            .key_algorithm(KeyAlgorithm::EcdhEsA256Kw)
             .payload(&plaintext)
             .add_recipient("".to_string(), public_key)
             .build()
@@ -449,8 +477,15 @@ mod test {
 
     impl KeyStore {
         fn new() -> Self {
+            let bytes =
+                hex::decode("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a")
+                    .unwrap();
+            let fixed: [u8; 32] = bytes.try_into().unwrap();
+            let recipient_secret = StaticSecret::from(fixed);
+
             Self {
-                recipient_secret: x25519_dalek::StaticSecret::random_from_rng(&mut OsRng),
+                recipient_secret,
+                // recipient_secret: x25519_dalek::StaticSecret::random_from_rng(&mut OsRng),
             }
         }
     }

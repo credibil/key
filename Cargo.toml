@@ -31,10 +31,10 @@ aes-gcm = "0.10.3"
 aes-kw = { version = "0.2.1", features = ["alloc"] }
 anyhow = "1.0.95"
 base64ct = { version = "1.6.0", features = ["std"] }
+chacha20poly1305 = "0.10.1"
 ciborium = "0.2.2"
 coset = "0.3.8"
-# crypto_box = "0.9.1"
-# chacha20poly1305 = "0.10.1"
+# crypto_box = { version = "0.9.1", features = ["chacha20"] }
 ecdsa = "0.16.9"
 ecies = { version = "0.2.7", default-features = false, features = ["pure", "std"] }
 ed25519-dalek = { version = "2.1.1", features = ["rand_core"] }
