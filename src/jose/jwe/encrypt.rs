@@ -1,6 +1,6 @@
 //! # JWE Builder
 
-use aes_gcm::aead::KeyInit; // heapless,
+use aes_gcm::aead::KeyInit;
 use aes_gcm::{AeadCore, AeadInPlace, Aes256Gcm}; //, Nonce, Tag};
 // use aes_gcm::aes::cipher::consts::U12;
 use aes_kw::Kek;

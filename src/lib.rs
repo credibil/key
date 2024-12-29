@@ -84,9 +84,7 @@ pub trait Cipher: Send + Sync {
 
     /// Derive the Content Encryption Key using the recipient's private key
     /// and sender's public key.
-    fn shared_secret(
-        &self, sender_public: [u8;32],
-    ) -> impl Future<Output = [u8;32]> + Send;
+    fn shared_secret(&self, sender_public: [u8; 32]) -> impl Future<Output = [u8; 32]> + Send;
 }
 
 /// Cryptographic key type.
