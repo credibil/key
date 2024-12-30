@@ -74,16 +74,14 @@ pub trait Signer: Send + Sync {
     fn verification_method(&self) -> impl Future<Output = Result<String>> + Send;
 }
 
-/// Encryptor is used by implementers to provide decryption-related functions.
+/// Receiver encapsulates functionality implementers are required to implement
+/// in order for receivers (recipients) to decrypt an encrypted message.
 pub trait Receiver: Send + Sync {
-    /// Receiver's public key.
-    fn public_key(&self) -> PublicKey;
-
     /// Receiver's public key identifier.
     fn key_id(&self) -> String;
 
-    /// Derive the receiver's shared secret used for decrypting (or used
-    /// directly) for the Content Encryption Key.
+    /// Derive the receiver's shared secret used for decrypting (or direct use)
+    /// for the Content Encryption Key.
     ///
     /// `[SecretKey]` wraps the receiver's private key to provide the key
     /// derivation functionality using ECDH-ES. The resultant `[SharedSecret]`
@@ -103,28 +101,24 @@ pub trait Receiver: Send + Sync {
     /// use x25519_dalek::{StaticSecret, PublicKey};
     ///
     /// struct KeyStore {
-    ///     x25519_secret: StaticSecret,
+    ///     secret: StaticSecret,
     /// }
     ///
     /// impl KeyStore {
     ///     fn new() -> Self {
     ///         Self {
-    ///             x25519_secret: StaticSecret::random_from_rng(OsRng),
+    ///             secret: StaticSecret::random_from_rng(OsRng),
     ///         }
     ///     }
     /// }
     ///
     /// impl Receiver for KeyStore {
-    ///     fn public_key(&self) -> PublicKey {
-    ///        PublicKey::from(&self.x25519_secret).into()
-    ///     }
-    ///
     ///    fn key_id(&self) -> String {
-    ///         "some-key-id".to_string()
+    ///         "some-kid".to_string()
     ///    }
     ///
     /// async fn shared_secret(&self, sender_public: PublicKey) -> Result<SharedSecret> {
-    ///     let secret_key = SecretKey::from(self.x25519_secret.to_bytes());
+    ///     let secret_key = SecretKey::from(self.secret.to_bytes());
     ///     secret_key.shared_secret(sender_public)
     /// }
     /// ```

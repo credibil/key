@@ -336,8 +336,9 @@ mod test {
     async fn simple() {
         let key_store = X25519::new();
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
+        let public_key = PublicKey::from(key_store.public_key);
 
-        let jwe = encrypt(&plaintext, key_store.public_key()).expect("should encrypt");
+        let jwe = encrypt(&plaintext, public_key).expect("should encrypt");
         let decrypted: String = decrypt(&jwe, &key_store).await.expect("should decrypt");
         assert_eq!(plaintext, decrypted);
     }
@@ -347,8 +348,9 @@ mod test {
     async fn compact() {
         let key_store = X25519::new();
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
+        let public_key = PublicKey::from(key_store.public_key);
 
-        let jwe = encrypt(&plaintext, key_store.public_key()).expect("should encrypt");
+        let jwe = encrypt(&plaintext, public_key).expect("should encrypt");
 
         // serialize/deserialize
         let compact_jwe = jwe.to_string();
@@ -364,10 +366,11 @@ mod test {
     async fn default() {
         let key_store = X25519::new();
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
+        let public_key = PublicKey::from(key_store.public_key);
 
         let jwe = JweBuilder::new()
             .payload(&plaintext)
-            .add_recipient(key_store.key_id(), key_store.public_key())
+            .add_recipient("some-kid", public_key)
             .build()
             .expect("should encrypt");
 
@@ -380,12 +383,13 @@ mod test {
     async fn ecdh_es_a256kw() {
         let key_store = X25519::new();
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
+        let public_key = PublicKey::from(key_store.public_key);
 
         let jwe = JweBuilder::new()
             .content_algorithm(ContentAlgorithm::A256Gcm)
             .key_algorithm(KeyAlgorithm::EcdhEsA256Kw)
             .payload(&plaintext)
-            .add_recipient(key_store.key_id(), key_store.public_key())
+            .add_recipient("some-kid", public_key)
             .build()
             .expect("should encrypt");
 
@@ -398,12 +402,13 @@ mod test {
     async fn ecies_es256k() {
         let key_store = Es256k::new();
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
+        let public_key = PublicKey::from(key_store.public_key);
 
         let jwe = JweBuilder::new()
             .content_algorithm(ContentAlgorithm::A256Gcm)
             .key_algorithm(KeyAlgorithm::EciesEs256K)
             .payload(&plaintext)
-            .add_recipient(key_store.key_id(), key_store.public_key())
+            .add_recipient("some-kid", public_key)
             .build()
             .expect("should encrypt");
 
@@ -413,60 +418,56 @@ mod test {
 
     // Basic key store for testing
     struct X25519 {
-        secret: x25519_dalek::StaticSecret,
+        public_key: x25519_dalek::PublicKey,
+        secret_key: x25519_dalek::StaticSecret,
     }
 
     impl X25519 {
         fn new() -> Self {
-            // let bytes =
-            //     hex::decode("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a")
-            //         .unwrap();
-            // let fixed: [u8; 32] = bytes.try_into().unwrap();
-            // let secret = x25519_dalek::StaticSecret::from(fixed);
-            let secret = x25519_dalek::StaticSecret::random_from_rng(OsRng);
+            let secret_key = x25519_dalek::StaticSecret::random_from_rng(OsRng);
+            let public_key = x25519_dalek::PublicKey::from(&secret_key).into();
 
-            Self { secret }
+            Self {
+                public_key,
+                secret_key,
+            }
         }
     }
 
     impl Receiver for X25519 {
-        fn public_key(&self) -> PublicKey {
-            x25519_dalek::PublicKey::from(&self.secret).into()
-        }
-
         fn key_id(&self) -> String {
-            "key-id".to_string()
+            "some-kid".to_string()
         }
 
         async fn shared_secret(&self, sender_public: PublicKey) -> Result<SharedSecret> {
-            let secret_key = SecretKey::from(self.secret.to_bytes());
+            let secret_key = SecretKey::from(self.secret_key.to_bytes());
             secret_key.shared_secret(sender_public)
         }
     }
 
     // Basic key store for testing
     struct Es256k {
-        secret: ecies::SecretKey,
+        public_key: ecies::PublicKey,
+        secret_key: ecies::SecretKey,
     }
 
     impl Es256k {
         fn new() -> Self {
-            let (secret, _) = ecies::utils::generate_keypair();
-            Self { secret }
+            let (secret_key, public_key) = ecies::utils::generate_keypair();
+            Self {
+                public_key,
+                secret_key,
+            }
         }
     }
 
     impl Receiver for Es256k {
-        fn public_key(&self) -> PublicKey {
-            ecies::PublicKey::from_secret_key(&self.secret).into()
-        }
-
         fn key_id(&self) -> String {
-            "key-id".to_string()
+            "some-kid".to_string()
         }
 
         async fn shared_secret(&self, sender_public: PublicKey) -> Result<SharedSecret> {
-            let secret: [u8; 32] = self.secret.serialize();
+            let secret: [u8; 32] = self.secret_key.serialize();
             let secret_key = SecretKey::try_from(secret).expect("should convert");
             secret_key.shared_secret(sender_public)
         }
