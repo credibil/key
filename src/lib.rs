@@ -10,6 +10,7 @@ pub mod jose;
 
 use std::future::{Future, IntoFuture};
 
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 pub use crate::jose::jwa::Algorithm;
@@ -33,7 +34,7 @@ pub trait KeyOps: Send + Sync {
     /// # Errors
     ///
     /// Returns an error if the signer cannot be created.
-    fn signer(&self, controller: &str) -> anyhow::Result<impl Signer>;
+    fn signer(&self, controller: &str) -> Result<impl Signer>;
 
     /// Receiver provides data encryption/decryption functionality.
     ///
@@ -43,7 +44,7 @@ pub trait KeyOps: Send + Sync {
     /// # Errors
     ///
     /// Returns an error if the encryptor cannot be created.
-    fn receiver(&self, controller: &str) -> anyhow::Result<impl Receiver>;
+    fn receiver(&self, controller: &str) -> Result<impl Receiver>;
 }
 
 /// Signer is used by implementers to provide signing functionality for
@@ -56,11 +57,11 @@ pub trait Signer: Send + Sync {
     }
 
     /// `TrySign` is the fallible version of Sign.
-    fn try_sign(&self, msg: &[u8]) -> impl Future<Output = anyhow::Result<Vec<u8>>> + Send;
+    fn try_sign(&self, msg: &[u8]) -> impl Future<Output = Result<Vec<u8>>> + Send;
 
     /// The public key of the key pair used in signing. The possibility of key
     /// rotation mean this key should only be referenced at the point of signing.
-    fn public_key(&self) -> impl Future<Output = anyhow::Result<Vec<u8>>> + Send;
+    fn public_key(&self) -> impl Future<Output = Result<Vec<u8>>> + Send;
 
     /// Signature algorithm used by the signer.
     fn algorithm(&self) -> Algorithm;
@@ -70,7 +71,7 @@ pub trait Signer: Send + Sync {
     ///
     /// Async and fallible because the client may need to access key information
     /// to construct the method reference.
-    fn verification_method(&self) -> impl Future<Output = anyhow::Result<String>> + Send;
+    fn verification_method(&self) -> impl Future<Output = Result<String>> + Send;
 }
 
 /// Encryptor is used by implementers to provide decryption-related functions.
@@ -83,9 +84,53 @@ pub trait Receiver: Send + Sync {
 
     /// Derive the receiver's shared secret used for decrypting (or used
     /// directly) for the Content Encryption Key.
+    ///
+    /// `[SecretKey]` wraps the receiver's private key to provide the key
+    /// derivation functionality using ECDH-ES. The resultant `[SharedSecret]`
+    /// is used in decrypting the JWE ciphertext.
+    ///
+    /// `[SecretKey]` supports both X25519 and secp256k1 private keys.
+    ///
+    /// # Errors
+    /// LATER: document errors
+    ///
+    /// # Example
+    ///
+    /// This example derives a shared secret from an X25519 private key.
+    ///
+    /// ```rust,ignore
+    /// use rand::rngs::OsRng;
+    /// use x25519_dalek::{StaticSecret, PublicKey};
+    ///
+    /// struct KeyStore {
+    ///     x25519_secret: StaticSecret,
+    /// }
+    ///
+    /// impl KeyStore {
+    ///     fn new() -> Self {
+    ///         Self {
+    ///             x25519_secret: StaticSecret::random_from_rng(OsRng),
+    ///         }
+    ///     }
+    /// }
+    ///
+    /// impl Receiver for KeyStore {
+    ///     fn public_key(&self) -> PublicKey {
+    ///        PublicKey::from(&self.x25519_secret).into()
+    ///     }
+    ///
+    ///    fn key_id(&self) -> String {
+    ///         "some-key-id".to_string()
+    ///    }
+    ///
+    /// async fn shared_secret(&self, sender_public: PublicKey) -> Result<SharedSecret> {
+    ///     let secret_key = SecretKey::from(self.x25519_secret.to_bytes());
+    ///     secret_key.shared_secret(sender_public)
+    /// }
+    /// ```
     fn shared_secret(
         &self, sender_public: PublicKey,
-    ) -> impl Future<Output = anyhow::Result<SharedSecret>> + Send;
+    ) -> impl Future<Output = Result<SharedSecret>> + Send;
 }
 
 /// Cryptographic key type.

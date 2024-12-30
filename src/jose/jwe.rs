@@ -291,6 +291,7 @@ pub enum Zip {
 
 #[cfg(test)]
 mod test {
+    // use rand::rngs::OsRng;
 
     use super::*;
 
@@ -333,7 +334,7 @@ mod test {
     // Use top-level encrypt method to shortcut using the builder
     #[tokio::test]
     async fn simple() {
-        let key_store = KeyStore::new();
+        let key_store = X25519::new();
         let public_key = PublicKey::try_from(key_store.public_key()).expect("should convert");
 
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
@@ -345,7 +346,7 @@ mod test {
     // Compact serialization/deserialization
     #[tokio::test]
     async fn compact() {
-        let key_store = KeyStore::new();
+        let key_store = X25519::new();
         let public_key = PublicKey::try_from(key_store.public_key()).expect("should convert");
 
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
@@ -364,7 +365,7 @@ mod test {
     // round trip: encrypt and then decrypt
     #[tokio::test]
     async fn default() {
-        let key_store = KeyStore::new();
+        let key_store = X25519::new();
         let public_key = PublicKey::try_from(key_store.public_key()).expect("should convert");
 
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
@@ -382,7 +383,7 @@ mod test {
 
     #[tokio::test]
     async fn ecdh_es_a256kw() {
-        let key_store = KeyStore::new();
+        let key_store = X25519::new();
         let public_key = PublicKey::try_from(key_store.public_key()).expect("should convert");
 
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
@@ -401,8 +402,8 @@ mod test {
     }
 
     #[tokio::test]
-    async fn ecies_es_256k() {
-        let key_store = KeyStore::new();
+    async fn ecies_es256k() {
+        let key_store = Es256k::new();
         let public_key = PublicKey::try_from(key_store.public_key()).expect("should convert");
 
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
@@ -423,31 +424,26 @@ mod test {
     }
 
     // Basic key store for testing
-    struct KeyStore {
-        x25519_secret: x25519_dalek::StaticSecret,
-        secp256k1_secret: ecies::SecretKey,
+    struct X25519 {
+        secret: x25519_dalek::StaticSecret,
     }
 
-    impl KeyStore {
+    impl X25519 {
         fn new() -> Self {
             let bytes =
                 hex::decode("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a")
                     .unwrap();
             let fixed: [u8; 32] = bytes.try_into().unwrap();
-            let x25519_secret = x25519_dalek::StaticSecret::from(fixed);
-            let (secp256k1_secret, _) = ecies::utils::generate_keypair();
+            let secret = x25519_dalek::StaticSecret::from(fixed);
+            // let secret = x25519_dalek::StaticSecret::random_from_rng(OsRng);
 
-            Self {
-                x25519_secret,
-                secp256k1_secret,
-            }
+            Self { secret }
         }
     }
 
-    impl Receiver for KeyStore {
+    impl Receiver for X25519 {
         fn public_key(&self) -> PublicKey {
-            // x25519_dalek::PublicKey::from(&self.x25519_secret).into()
-            ecies::PublicKey::from_secret_key(&self.secp256k1_secret).into()
+            x25519_dalek::PublicKey::from(&self.secret).into()
         }
 
         fn key_id(&self) -> String {
@@ -455,10 +451,34 @@ mod test {
         }
 
         async fn shared_secret(&self, sender_public: PublicKey) -> Result<SharedSecret> {
-            // let secret_key = SecretKey::from(self.x25519_secret.to_bytes());
-            // secret_key.shared_secret(sender_public)
+            let secret_key = SecretKey::from(self.secret.to_bytes());
+            secret_key.shared_secret(sender_public)
+        }
+    }
 
-            let secret: [u8; 32] = self.secp256k1_secret.serialize();
+    // Basic key store for testing
+    struct Es256k {
+        secret: ecies::SecretKey,
+    }
+
+    impl Es256k {
+        fn new() -> Self {
+            let (secret, _) = ecies::utils::generate_keypair();
+            Self { secret }
+        }
+    }
+
+    impl Receiver for Es256k {
+        fn public_key(&self) -> PublicKey {
+            ecies::PublicKey::from_secret_key(&self.secret).into()
+        }
+
+        fn key_id(&self) -> String {
+            "key-id".to_string()
+        }
+
+        async fn shared_secret(&self, sender_public: PublicKey) -> Result<SharedSecret> {
+            let secret: [u8; 32] = self.secret.serialize();
             let secret_key = SecretKey::try_from(secret).expect("should convert");
             secret_key.shared_secret(sender_public)
         }
