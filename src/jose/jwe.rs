@@ -291,7 +291,7 @@ pub enum Zip {
 
 #[cfg(test)]
 mod test {
-    // use rand::rngs::OsRng;
+    use rand::rngs::OsRng;
 
     use super::*;
 
@@ -335,10 +335,9 @@ mod test {
     #[tokio::test]
     async fn simple() {
         let key_store = X25519::new();
-        let public_key = PublicKey::try_from(key_store.public_key()).expect("should convert");
-
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
-        let jwe = encrypt(&plaintext, public_key).expect("should encrypt");
+
+        let jwe = encrypt(&plaintext, key_store.public_key()).expect("should encrypt");
         let decrypted: String = decrypt(&jwe, &key_store).await.expect("should decrypt");
         assert_eq!(plaintext, decrypted);
     }
@@ -347,11 +346,9 @@ mod test {
     #[tokio::test]
     async fn compact() {
         let key_store = X25519::new();
-        let public_key = PublicKey::try_from(key_store.public_key()).expect("should convert");
-
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
 
-        let jwe = encrypt(&plaintext, public_key).expect("should encrypt");
+        let jwe = encrypt(&plaintext, key_store.public_key()).expect("should encrypt");
 
         // serialize/deserialize
         let compact_jwe = jwe.to_string();
@@ -366,13 +363,11 @@ mod test {
     #[tokio::test]
     async fn default() {
         let key_store = X25519::new();
-        let public_key = PublicKey::try_from(key_store.public_key()).expect("should convert");
-
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
 
         let jwe = JweBuilder::new()
             .payload(&plaintext)
-            .add_recipient(key_store.key_id(), public_key)
+            .add_recipient(key_store.key_id(), key_store.public_key())
             .build()
             .expect("should encrypt");
 
@@ -384,15 +379,13 @@ mod test {
     #[tokio::test]
     async fn ecdh_es_a256kw() {
         let key_store = X25519::new();
-        let public_key = PublicKey::try_from(key_store.public_key()).expect("should convert");
-
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
 
         let jwe = JweBuilder::new()
             .content_algorithm(ContentAlgorithm::A256Gcm)
             .key_algorithm(KeyAlgorithm::EcdhEsA256Kw)
             .payload(&plaintext)
-            .add_recipient(key_store.key_id(), public_key)
+            .add_recipient(key_store.key_id(), key_store.public_key())
             .build()
             .expect("should encrypt");
 
@@ -404,23 +397,18 @@ mod test {
     #[tokio::test]
     async fn ecies_es256k() {
         let key_store = Es256k::new();
-        let public_key = PublicKey::try_from(key_store.public_key()).expect("should convert");
-
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
 
         let jwe = JweBuilder::new()
             .content_algorithm(ContentAlgorithm::A256Gcm)
             .key_algorithm(KeyAlgorithm::EciesEs256K)
             .payload(&plaintext)
-            .add_recipient(key_store.key_id(), public_key)
+            .add_recipient(key_store.key_id(), key_store.public_key())
             .build()
             .expect("should encrypt");
 
-        // println!("{:?}", jwe);
-
         let decrypted: String = decrypt(&jwe, &key_store).await.expect("should decrypt");
-
-        // assert_eq!(plaintext, decrypted);
+        assert_eq!(plaintext, decrypted);
     }
 
     // Basic key store for testing
@@ -430,12 +418,12 @@ mod test {
 
     impl X25519 {
         fn new() -> Self {
-            let bytes =
-                hex::decode("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a")
-                    .unwrap();
-            let fixed: [u8; 32] = bytes.try_into().unwrap();
-            let secret = x25519_dalek::StaticSecret::from(fixed);
-            // let secret = x25519_dalek::StaticSecret::random_from_rng(OsRng);
+            // let bytes =
+            //     hex::decode("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a")
+            //         .unwrap();
+            // let fixed: [u8; 32] = bytes.try_into().unwrap();
+            // let secret = x25519_dalek::StaticSecret::from(fixed);
+            let secret = x25519_dalek::StaticSecret::random_from_rng(OsRng);
 
             Self { secret }
         }
