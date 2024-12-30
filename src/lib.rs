@@ -76,14 +76,16 @@ pub trait Signer: Send + Sync {
 /// Encryptor is used by implementers to provide decryption-related functions.
 pub trait Receiver: Send + Sync {
     /// Receiver's public key.
-    fn public_key(&self) -> Vec<u8>;
+    fn public_key(&self) -> PublicKey;
 
     /// Receiver's public key identifier.
     fn key_id(&self) -> String;
 
     /// Derive the receiver's shared secret used for decrypting (or used
     /// directly) for the Content Encryption Key.
-    fn shared_secret(&self, sender_public: PublicKey) -> impl Future<Output = SharedSecret> + Send;
+    fn shared_secret(
+        &self, sender_public: PublicKey,
+    ) -> impl Future<Output = anyhow::Result<SharedSecret>> + Send;
 }
 
 /// Cryptographic key type.

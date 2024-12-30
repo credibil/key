@@ -49,6 +49,7 @@
 
 mod decrypt;
 mod encrypt;
+mod key;
 
 use std::fmt::{self, Display};
 
@@ -57,9 +58,9 @@ use base64ct::{Base64UrlUnpadded, Encoding};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use zeroize::{Zeroize, ZeroizeOnDrop};
 
 pub use self::encrypt::{JweBuilder, NoPayload, NoRecipients, WithPayload, WithRecipients};
+pub use self::key::{PublicKey, SecretKey, SharedSecret};
 use crate::jose::jwk::PublicKeyJwk;
 use crate::Receiver;
 
@@ -83,9 +84,7 @@ pub fn encrypt<T: Serialize + Send>(plaintext: &T, recipient_public: PublicKey) 
 /// # Errors
 ///
 /// Returns an error if the JWE cannot be decrypted.
-pub async fn decrypt<T: DeserializeOwned>(
-    jwe: impl Into<&Jwe>, receiver: &impl Receiver,
-) -> Result<T> {
+pub async fn decrypt<T: DeserializeOwned>(jwe: &Jwe, receiver: &impl Receiver) -> Result<T> {
     decrypt::decrypt(jwe, receiver).await
 }
 
@@ -224,15 +223,15 @@ pub struct Header {
     /// agreement algorithms.
     pub epk: PublicKeyJwk,
 
-    /// Key agreement `PartyUInfo` value, used to generate the shared key.
-    /// A base64url string containing information about the producer.
+    /// The initialization vector used when ECIES-ES256K key management
+    /// algorithm is used to encrypt the CEK.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub apu: Option<String>,
+    pub iv: Option<String>,
 
-    /// Key agreement `PartyVInfo` value, used to generate the shared key.
-    /// A base64url string containing information about the recipient.
+    /// The authentication tag used when ECIES-ES256K key management
+    /// algorithm is used to encrypt the CEK.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub apv: Option<String>,
+    pub tag: Option<String>,
 }
 
 /// The algorithm used to encrypt (key encryption) or derive (key agreement)
@@ -290,111 +289,8 @@ pub enum Zip {
     Deflate,
 }
 
-/// A short-lived secret key that can only be used to compute a single
-/// `SharedSecret`.
-///
-/// The [`SecretKey::shared_secret`] method consumes and then wipes the secret
-/// key. The compiler statically checks that the resulting secret is used at most
-/// once.
-///
-/// With no serialization methods, the [`SecretKey`] can only be generated in a
-/// usable form from a new instance.
-#[derive(Zeroize, ZeroizeOnDrop)]
-pub struct SecretKey([u8; 32]);
-
-impl From<[u8; 32]> for SecretKey {
-    fn from(key: [u8; 32]) -> Self {
-        Self(key)
-    }
-}
-
-impl SecretKey {
-    /// Derive a shared secret from the secret key and the sender's public key
-    // to produce a [`SecretKey`].
-    #[must_use]
-    pub fn shared_secret(self, sender_public: PublicKey) -> SharedSecret {
-        // SecretKey(their_public.0.mul_clamped(self.0))
-
-        // derive SecretKey using a Diffie-Hellman key agreement
-        let sender_public = x25519_dalek::PublicKey::from(sender_public.to_bytes());
-        let secret = x25519_dalek::StaticSecret::from(self.0);
-        let shared_secret = secret.diffie_hellman(&sender_public);
-
-        SharedSecret(shared_secret.to_bytes())
-    }
-}
-
-/// A shared secret key that can be used to encrypt and decrypt messages.
-#[derive(Zeroize, ZeroizeOnDrop)]
-pub struct SharedSecret([u8; 32]);
-
-impl SharedSecret {
-    // /// Return the shared secret as a byte slice.
-    // fn as_bytes(&self) -> &[u8; 32] {
-    //     &self.0
-    // }
-
-    /// Return the shared secret as a byte array.
-    const fn to_bytes(&self) -> [u8; 32] {
-        self.0
-    }
-}
-
-/// The public key of the key pair used in encryption.
-#[derive(Clone, Copy)]
-pub struct PublicKey([u8; 32]);
-
-impl PublicKey {
-    // /// Return the shared secret as a byte slice.
-    // fn as_bytes(&self) -> &[u8; 32] {
-    //     &self.0
-    // }
-
-    /// Return the shared secret as a byte array.
-    const fn to_bytes(self) -> [u8; 32] {
-        self.0
-    }
-}
-
-impl From<[u8; 32]> for PublicKey {
-    fn from(key: [u8; 32]) -> Self {
-        Self(key)
-    }
-}
-
-impl TryFrom<&[u8]> for PublicKey {
-    type Error = anyhow::Error;
-
-    fn try_from(key: &[u8]) -> Result<Self> {
-        let key: [u8; 32] = key.try_into().expect("should convert");
-        Ok(Self(key))
-    }
-}
-
-impl TryFrom<Vec<u8>> for PublicKey {
-    type Error = anyhow::Error;
-
-    fn try_from(key: Vec<u8>) -> Result<Self> {
-        let key: [u8; 32] = key.try_into().expect("should convert");
-        Ok(Self(key))
-    }
-}
-
-impl From<x25519_dalek::PublicKey> for PublicKey {
-    fn from(key: x25519_dalek::PublicKey) -> Self {
-        Self(key.to_bytes())
-    }
-}
-
-impl From<PublicKey> for x25519_dalek::PublicKey {
-    fn from(val: PublicKey) -> Self {
-        Self::from(val.0)
-    }
-}
-
 #[cfg(test)]
 mod test {
-    use x25519_dalek::StaticSecret;
 
     use super::*;
 
@@ -437,33 +333,28 @@ mod test {
     // Use top-level encrypt method to shortcut using the builder
     #[tokio::test]
     async fn simple() {
-        let plaintext = "The true sign of intelligence is not knowledge but imagination.";
-
         let key_store = KeyStore::new();
         let public_key = PublicKey::try_from(key_store.public_key()).expect("should convert");
 
+        let plaintext = "The true sign of intelligence is not knowledge but imagination.";
         let jwe = encrypt(&plaintext, public_key).expect("should encrypt");
         let decrypted: String = decrypt(&jwe, &key_store).await.expect("should decrypt");
         assert_eq!(plaintext, decrypted);
-
-        println!("JWE: {}", jwe.to_string());
     }
 
     // Compact serialization/deserialization
     #[tokio::test]
     async fn compact() {
-        let plaintext = "The true sign of intelligence is not knowledge but imagination.";
-
         let key_store = KeyStore::new();
         let public_key = PublicKey::try_from(key_store.public_key()).expect("should convert");
 
+        let plaintext = "The true sign of intelligence is not knowledge but imagination.";
+
         let jwe = encrypt(&plaintext, public_key).expect("should encrypt");
-        println!("JWE: {:?}\n", jwe);
 
+        // serialize/deserialize
         let compact_jwe = jwe.to_string();
-
         let jwe: Jwe = compact_jwe.parse().expect("should parse");
-        println!("JWE: {:?}", jwe);
 
         let decrypted: String = decrypt(&jwe, &key_store).await.expect("should decrypt");
 
@@ -472,11 +363,29 @@ mod test {
 
     // round trip: encrypt and then decrypt
     #[tokio::test]
-    async fn builder() {
-        let plaintext = "The true sign of intelligence is not knowledge but imagination.";
-
+    async fn default() {
         let key_store = KeyStore::new();
         let public_key = PublicKey::try_from(key_store.public_key()).expect("should convert");
+
+        let plaintext = "The true sign of intelligence is not knowledge but imagination.";
+
+        let jwe = JweBuilder::new()
+            .payload(&plaintext)
+            .add_recipient(key_store.key_id(), public_key)
+            .build()
+            .expect("should encrypt");
+
+        let decrypted: String = decrypt(&jwe, &key_store).await.expect("should decrypt");
+
+        assert_eq!(plaintext, decrypted);
+    }
+
+    #[tokio::test]
+    async fn ecdh_es_a256kw() {
+        let key_store = KeyStore::new();
+        let public_key = PublicKey::try_from(key_store.public_key()).expect("should convert");
+
+        let plaintext = "The true sign of intelligence is not knowledge but imagination.";
 
         let jwe = JweBuilder::new()
             .content_algorithm(ContentAlgorithm::A256Gcm)
@@ -491,9 +400,32 @@ mod test {
         assert_eq!(plaintext, decrypted);
     }
 
+    #[tokio::test]
+    async fn ecies_es_256k() {
+        let key_store = KeyStore::new();
+        let public_key = PublicKey::try_from(key_store.public_key()).expect("should convert");
+
+        let plaintext = "The true sign of intelligence is not knowledge but imagination.";
+
+        let jwe = JweBuilder::new()
+            .content_algorithm(ContentAlgorithm::A256Gcm)
+            .key_algorithm(KeyAlgorithm::EciesEs256K)
+            .payload(&plaintext)
+            .add_recipient(key_store.key_id(), public_key)
+            .build()
+            .expect("should encrypt");
+
+        // println!("{:?}", jwe);
+
+        let decrypted: String = decrypt(&jwe, &key_store).await.expect("should decrypt");
+
+        // assert_eq!(plaintext, decrypted);
+    }
+
     // Basic key store for testing
     struct KeyStore {
-        recipient_secret: x25519_dalek::StaticSecret,
+        x25519_secret: x25519_dalek::StaticSecret,
+        secp256k1_secret: ecies::SecretKey,
     }
 
     impl KeyStore {
@@ -502,26 +434,32 @@ mod test {
                 hex::decode("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a")
                     .unwrap();
             let fixed: [u8; 32] = bytes.try_into().unwrap();
-            let recipient_secret = StaticSecret::from(fixed);
+            let x25519_secret = x25519_dalek::StaticSecret::from(fixed);
+            let (secp256k1_secret, _) = ecies::utils::generate_keypair();
 
             Self {
-                recipient_secret,
-                // recipient_secret: x25519_dalek::StaticSecret::random_from_rng(&mut OsRng),
+                x25519_secret,
+                secp256k1_secret,
             }
         }
     }
 
     impl Receiver for KeyStore {
-        fn public_key(&self) -> Vec<u8> {
-            x25519_dalek::PublicKey::from(&self.recipient_secret).as_bytes().to_vec()
+        fn public_key(&self) -> PublicKey {
+            // x25519_dalek::PublicKey::from(&self.x25519_secret).into()
+            ecies::PublicKey::from_secret_key(&self.secp256k1_secret).into()
         }
 
         fn key_id(&self) -> String {
             "key-id".to_string()
         }
 
-        async fn shared_secret(&self, sender_public: PublicKey) -> SharedSecret {
-            let secret_key = SecretKey::from(self.recipient_secret.to_bytes());
+        async fn shared_secret(&self, sender_public: PublicKey) -> Result<SharedSecret> {
+            // let secret_key = SecretKey::from(self.x25519_secret.to_bytes());
+            // secret_key.shared_secret(sender_public)
+
+            let secret: [u8; 32] = self.secp256k1_secret.serialize();
+            let secret_key = SecretKey::try_from(secret).expect("should convert");
             secret_key.shared_secret(sender_public)
         }
     }
