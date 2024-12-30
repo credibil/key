@@ -10,10 +10,12 @@ use chacha20poly1305::XChaCha20Poly1305;
 use ecies::consts::{AEAD_TAG_LENGTH, NONCE_LENGTH, UNCOMPRESSED_PUBLIC_KEY_SIZE};
 use rand::rngs::OsRng;
 use serde::Serialize;
-use x25519_dalek::{EphemeralSecret, PublicKey};
+use x25519_dalek::EphemeralSecret;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use super::{ContentAlgorithm, Header, Jwe, KeyAlgorithm, KeyEncryption, Protected, Recipients};
+use crate::jose::jwe::{
+    ContentAlgorithm, Header, Jwe, KeyAlgorithm, KeyEncryption, Protected, PublicKey, Recipients,
+};
 use crate::jose::jwk::PublicKeyJwk;
 use crate::{Curve, KeyType};
 
@@ -53,7 +55,7 @@ pub struct Recipient {
 
     /// The recipient's public key, in bytes, for encrypting the content
     /// encryption key (CEK).
-    pub public_key: [u8; 32],
+    pub public_key: PublicKey,
 }
 
 impl JweBuilder<NoPayload, NoRecipients> {
@@ -97,7 +99,7 @@ impl<P> JweBuilder<P, NoRecipients> {
     /// * `public_key` - The recipient's public key, in bytes, for encrypting
     ///   the content.
     pub fn add_recipient(
-        self, key_id: impl Into<String>, public_key: [u8; 32],
+        self, key_id: impl Into<String>, public_key: PublicKey,
     ) -> JweBuilder<P, WithRecipients> {
         let recipient = Recipient {
             key_id: key_id.into(),
@@ -125,7 +127,7 @@ impl<P> JweBuilder<P, WithRecipients> {
     /// * `public_key` - The recipient's public key, in bytes, for encrypting
     ///   the content.
     #[must_use]
-    pub fn add_recipient(mut self, key_id: impl Into<String>, public_key: [u8; 32]) -> Self {
+    pub fn add_recipient(mut self, key_id: impl Into<String>, public_key: PublicKey) -> Self {
         let recipient = Recipient {
             key_id: key_id.into(),
             public_key,
@@ -233,9 +235,8 @@ impl From<&[Recipient]> for EcdhEs {
     fn from(recipients: &[Recipient]) -> Self {
         // generate CEK using ECDH-ES
         let ephemeral_secret = EphemeralSecret::random_from_rng(rand::thread_rng());
-        let ephemeral_public = PublicKey::from(&ephemeral_secret).to_bytes();
-        let cek =
-            ephemeral_secret.diffie_hellman(&PublicKey::from(recipients[0].public_key)).to_bytes();
+        let ephemeral_public = x25519_dalek::PublicKey::from(&ephemeral_secret).to_bytes();
+        let cek = ephemeral_secret.diffie_hellman(&recipients[0].public_key.into()).to_bytes();
 
         Self {
             ephemeral_public,
@@ -299,8 +300,8 @@ impl Algorithm for EcdhEsA256Kw<'_> {
         for r in self.recipients {
             // derive shared secret
             let ephemeral_secret = EphemeralSecret::random_from_rng(rand::thread_rng());
-            let ephemeral_public = PublicKey::from(&ephemeral_secret);
-            let shared_secret = ephemeral_secret.diffie_hellman(&PublicKey::from(r.public_key));
+            let ephemeral_public = x25519_dalek::PublicKey::from(&ephemeral_secret);
+            let shared_secret = ephemeral_secret.diffie_hellman(&r.public_key.into());
 
             // encrypt (wrap) CEK
             let encrypted_key = Kek::from(*shared_secret.as_bytes())

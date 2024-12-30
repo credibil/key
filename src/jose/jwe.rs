@@ -50,7 +50,10 @@
 mod decrypt;
 mod encrypt;
 
+use std::fmt::{self, Display};
+
 use anyhow::Result;
+use base64ct::{Base64UrlUnpadded, Encoding};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -58,7 +61,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 
 pub use self::encrypt::{JweBuilder, NoPayload, NoRecipients, WithPayload, WithRecipients};
 use crate::jose::jwk::PublicKeyJwk;
-use crate::Cipher;
+use crate::Receiver;
 
 /// Encrypt plaintext using the defaults of A256GCM content encryption and
 /// ECDH-ES key agreement algorithms.
@@ -66,12 +69,12 @@ use crate::Cipher;
 /// # Errors
 ///
 /// Returns an error if the plaintext cannot be encrypted.
-pub fn encrypt<T: Serialize + Send>(plaintext: &T, recipient_public: &[u8; 32]) -> Result<Jwe> {
+pub fn encrypt<T: Serialize + Send>(plaintext: &T, recipient_public: PublicKey) -> Result<Jwe> {
     JweBuilder::new()
         .content_algorithm(ContentAlgorithm::A256Gcm)
         .key_algorithm(KeyAlgorithm::EcdhEs)
         .payload(plaintext)
-        .add_recipient("", *recipient_public)
+        .add_recipient("", recipient_public)
         .build()
 }
 
@@ -80,8 +83,10 @@ pub fn encrypt<T: Serialize + Send>(plaintext: &T, recipient_public: &[u8; 32]) 
 /// # Errors
 ///
 /// Returns an error if the JWE cannot be decrypted.
-pub async fn decrypt<T: DeserializeOwned>(jwe: &Jwe, cipher: &impl Cipher) -> Result<T> {
-    decrypt::decrypt(jwe, cipher).await
+pub async fn decrypt<T: DeserializeOwned>(
+    jwe: impl Into<&Jwe>, receiver: &impl Receiver,
+) -> Result<T> {
+    decrypt::decrypt(jwe, receiver).await
 }
 
 /// In JWE JSON serialization, one or more of the JWE Protected Header, JWE
@@ -118,7 +123,33 @@ pub struct Jwe {
     pub tag: String,
 }
 
-/// Phe JWE Shareed Protected header.
+/// Compact Serialization for single-recipient JWEs.
+impl Display for Jwe {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let Recipients::One(recipient) = &self.recipients else {
+            return Err(fmt::Error);
+        };
+
+        // add recipient data to protected header
+        let mut protected = ProtectedFlat {
+            inner: self.protected.clone(),
+            epk: recipient.header.epk.clone(),
+        };
+        protected.inner.alg = Some(recipient.header.alg.clone());
+
+        let bytes = serde_json::to_vec(&protected).map_err(|_| fmt::Error)?;
+        let protected = Base64UrlUnpadded::encode_string(&bytes);
+
+        let encrypted_key = &recipient.encrypted_key;
+        let iv = &self.iv;
+        let ciphertext = &self.ciphertext;
+        let tag = &self.tag;
+
+        write!(f, "{protected}.{encrypted_key}.{iv}.{ciphertext}.{tag}")
+    }
+}
+
+/// Phe JWE Shared Protected header.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Protected {
     /// Identifies the algorithm used to encrypt or determine the value of the
@@ -130,6 +161,13 @@ pub struct Protected {
     /// to produce the ciphertext and the Authentication Tag. MUST be an AEAD
     /// algorithm.
     pub enc: ContentAlgorithm,
+}
+
+#[derive(Deserialize, Serialize)]
+struct ProtectedFlat {
+    #[serde(flatten)]
+    inner: Protected,
+    epk: PublicKeyJwk,
 }
 
 /// JWE serialization is affected by the number of recipients. In the case of a
@@ -255,12 +293,12 @@ pub enum Zip {
 /// A short-lived secret key that can only be used to compute a single
 /// `SharedSecret`.
 ///
-/// The [`SecretKey::diffie_hellman`] method consumes and then wipes the secret
-/// key. where the compiler statically checks that the resulting secret is
-/// used at most once.
+/// The [`SecretKey::shared_secret`] method consumes and then wipes the secret
+/// key. The compiler statically checks that the resulting secret is used at most
+/// once.
 ///
-/// There are no serialization methods defined, meaning the [`SecretKey`]
-/// can only be generated from a fresh instance.
+/// With no serialization methods, the [`SecretKey`] can only be generated in a
+/// usable form from a new instance.
 #[derive(Zeroize, ZeroizeOnDrop)]
 pub struct SecretKey([u8; 32]);
 
@@ -272,17 +310,85 @@ impl From<[u8; 32]> for SecretKey {
 
 impl SecretKey {
     /// Derive a shared secret from the secret key and the sender's public key
-    // to produce a [`SharedSecret`].
+    // to produce a [`SecretKey`].
     #[must_use]
-    pub fn shared_secret(self, sender_public: [u8; 32]) -> [u8; 32] {
-        //SharedSecret(their_public.0.mul_clamped(self.0))
+    pub fn shared_secret(self, sender_public: PublicKey) -> SharedSecret {
+        // SecretKey(their_public.0.mul_clamped(self.0))
 
-        // derive [`SharedSecret`] using a Diffie-Hellman key agreement
-        let sender_public = x25519_dalek::PublicKey::from(sender_public);
+        // derive SecretKey using a Diffie-Hellman key agreement
+        let sender_public = x25519_dalek::PublicKey::from(sender_public.to_bytes());
         let secret = x25519_dalek::StaticSecret::from(self.0);
         let shared_secret = secret.diffie_hellman(&sender_public);
 
-        shared_secret.to_bytes()
+        SharedSecret(shared_secret.to_bytes())
+    }
+}
+
+/// A shared secret key that can be used to encrypt and decrypt messages.
+#[derive(Zeroize, ZeroizeOnDrop)]
+pub struct SharedSecret([u8; 32]);
+
+impl SharedSecret {
+    // /// Return the shared secret as a byte slice.
+    // fn as_bytes(&self) -> &[u8; 32] {
+    //     &self.0
+    // }
+
+    /// Return the shared secret as a byte array.
+    const fn to_bytes(&self) -> [u8; 32] {
+        self.0
+    }
+}
+
+/// The public key of the key pair used in encryption.
+#[derive(Clone, Copy)]
+pub struct PublicKey([u8; 32]);
+
+impl PublicKey {
+    // /// Return the shared secret as a byte slice.
+    // fn as_bytes(&self) -> &[u8; 32] {
+    //     &self.0
+    // }
+
+    /// Return the shared secret as a byte array.
+    const fn to_bytes(self) -> [u8; 32] {
+        self.0
+    }
+}
+
+impl From<[u8; 32]> for PublicKey {
+    fn from(key: [u8; 32]) -> Self {
+        Self(key)
+    }
+}
+
+impl TryFrom<&[u8]> for PublicKey {
+    type Error = anyhow::Error;
+
+    fn try_from(key: &[u8]) -> Result<Self> {
+        let key: [u8; 32] = key.try_into().expect("should convert");
+        Ok(Self(key))
+    }
+}
+
+impl TryFrom<Vec<u8>> for PublicKey {
+    type Error = anyhow::Error;
+
+    fn try_from(key: Vec<u8>) -> Result<Self> {
+        let key: [u8; 32] = key.try_into().expect("should convert");
+        Ok(Self(key))
+    }
+}
+
+impl From<x25519_dalek::PublicKey> for PublicKey {
+    fn from(key: x25519_dalek::PublicKey) -> Self {
+        Self(key.to_bytes())
+    }
+}
+
+impl From<PublicKey> for x25519_dalek::PublicKey {
+    fn from(val: PublicKey) -> Self {
+        Self::from(val.0)
     }
 }
 
@@ -334,9 +440,9 @@ mod test {
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
 
         let key_store = KeyStore::new();
-        let public_key: [u8; 32] = key_store.public_key().try_into().expect("should convert");
+        let public_key = PublicKey::try_from(key_store.public_key()).expect("should convert");
 
-        let jwe = encrypt(&plaintext, &public_key).expect("should encrypt");
+        let jwe = encrypt(&plaintext, public_key).expect("should encrypt");
         let decrypted: String = decrypt(&jwe, &key_store).await.expect("should decrypt");
         assert_eq!(plaintext, decrypted);
 
@@ -349,9 +455,9 @@ mod test {
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
 
         let key_store = KeyStore::new();
-        let public_key: [u8; 32] = key_store.public_key().try_into().expect("should convert");
+        let public_key = PublicKey::try_from(key_store.public_key()).expect("should convert");
 
-        let jwe = encrypt(&plaintext, &public_key).expect("should encrypt");
+        let jwe = encrypt(&plaintext, public_key).expect("should encrypt");
         println!("JWE: {:?}\n", jwe);
 
         let compact_jwe = jwe.to_string();
@@ -370,7 +476,7 @@ mod test {
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
 
         let key_store = KeyStore::new();
-        let public_key: [u8; 32] = key_store.public_key().try_into().expect("should convert");
+        let public_key = PublicKey::try_from(key_store.public_key()).expect("should convert");
 
         let jwe = JweBuilder::new()
             .content_algorithm(ContentAlgorithm::A256Gcm)
@@ -405,7 +511,7 @@ mod test {
         }
     }
 
-    impl Cipher for KeyStore {
+    impl Receiver for KeyStore {
         fn public_key(&self) -> Vec<u8> {
             x25519_dalek::PublicKey::from(&self.recipient_secret).as_bytes().to_vec()
         }
@@ -414,7 +520,7 @@ mod test {
             "key-id".to_string()
         }
 
-        async fn shared_secret(&self, sender_public: [u8; 32]) -> [u8; 32] {
+        async fn shared_secret(&self, sender_public: PublicKey) -> SharedSecret {
             let secret_key = SecretKey::from(self.recipient_secret.to_bytes());
             secret_key.shared_secret(sender_public)
         }

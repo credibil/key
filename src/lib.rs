@@ -13,6 +13,7 @@ use std::future::{Future, IntoFuture};
 use serde::{Deserialize, Serialize};
 
 pub use crate::jose::jwa::Algorithm;
+pub use crate::jose::jwe::{PublicKey, SharedSecret};
 pub use crate::jose::jwk::PublicKeyJwk;
 pub use crate::jose::jws::Jws;
 pub use crate::jose::jwt::Jwt;
@@ -34,7 +35,7 @@ pub trait KeyOps: Send + Sync {
     /// Returns an error if the signer cannot be created.
     fn signer(&self, controller: &str) -> anyhow::Result<impl Signer>;
 
-    /// Cipher provides data encryption/decryption functionality.
+    /// Receiver provides data encryption/decryption functionality.
     ///
     /// The `controller` parameter uniquely identifies the controller of the
     /// private key used in the signing operation.
@@ -42,7 +43,7 @@ pub trait KeyOps: Send + Sync {
     /// # Errors
     ///
     /// Returns an error if the encryptor cannot be created.
-    fn cipher(&self, controller: &str) -> anyhow::Result<impl Cipher>;
+    fn receiver(&self, controller: &str) -> anyhow::Result<impl Receiver>;
 }
 
 /// Signer is used by implementers to provide signing functionality for
@@ -72,19 +73,17 @@ pub trait Signer: Send + Sync {
     fn verification_method(&self) -> impl Future<Output = anyhow::Result<String>> + Send;
 }
 
-/// Encryptor is used by implementers to provide encryption/decryption
-/// functionality for Verifiable Credential issuance and Verifiable Presentation
-/// submissions.
-pub trait Cipher: Send + Sync {
-    /// Recipient's public key.
+/// Encryptor is used by implementers to provide decryption-related functions.
+pub trait Receiver: Send + Sync {
+    /// Receiver's public key.
     fn public_key(&self) -> Vec<u8>;
 
-    /// Recipient's public key identifier.
+    /// Receiver's public key identifier.
     fn key_id(&self) -> String;
 
-    /// Derive the Content Encryption Key using the recipient's private key
-    /// and sender's public key.
-    fn shared_secret(&self, sender_public: [u8; 32]) -> impl Future<Output = [u8; 32]> + Send;
+    /// Derive the receiver's shared secret used for decrypting (or used
+    /// directly) for the Content Encryption Key.
+    fn shared_secret(&self, sender_public: PublicKey) -> impl Future<Output = SharedSecret> + Send;
 }
 
 /// Cryptographic key type.
