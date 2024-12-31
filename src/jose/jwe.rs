@@ -59,7 +59,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub use self::encrypt::{JweBuilder, NoPayload, NoRecipients, WithPayload, WithRecipients};
+pub use self::encrypt::{JweBuilder, NoPayload, WithPayload};
 pub use self::key::{PublicKey, SecretKey, SharedSecret};
 use crate::jose::jwk::PublicKeyJwk;
 use crate::Receiver;

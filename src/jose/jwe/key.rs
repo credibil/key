@@ -99,6 +99,14 @@ impl PublicKey {
     pub const fn to_bytes(self) -> [u8; 32] {
         self.x
     }
+
+    /// Parse a public key from a byte slice.
+    ///
+    /// # Errors
+    /// LATER: document errors
+    pub fn from_slice(val: &[u8]) -> Result<Self> {
+        Self::try_from(val)
+    }
 }
 
 impl From<[u8; 32]> for PublicKey {
@@ -158,7 +166,6 @@ impl TryFrom<&[u8]> for PublicKey {
         Err(anyhow!("invalid public key length"))
     }
 }
-
 impl TryFrom<Vec<u8>> for PublicKey {
     type Error = anyhow::Error;
 

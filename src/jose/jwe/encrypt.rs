@@ -20,14 +20,14 @@ use crate::jose::jwk::PublicKeyJwk;
 use crate::{Curve, KeyType};
 
 /// Builds a JWE object using provided options.
-pub struct JweBuilder<P, R> {
+pub struct JweBuilder<P> {
     content_algorithm: ContentAlgorithm,
     key_algorithm: KeyAlgorithm,
     payload: P,
-    pub(crate) recipients: R,
+    pub(crate) recipients: Vec<Recipient>,
 }
 
-impl Default for JweBuilder<NoPayload, NoRecipients> {
+impl Default for JweBuilder<NoPayload> {
     fn default() -> Self {
         Self::new()
     }
@@ -40,13 +40,6 @@ pub struct NoPayload;
 /// Typestate generic for a JWE builder with a payload.
 pub struct WithPayload<'a, T: Serialize + Send>(&'a T);
 
-#[doc(hidden)]
-/// Typestate generic for a JWE builder with no recipients.
-pub struct NoRecipients;
-#[doc(hidden)]
-/// Typestate generic for a JWE builder with recipients.
-pub struct WithRecipients(pub Vec<Recipient>);
-
 /// Recipient information required when generating a JWE.
 pub struct Recipient {
     /// The fully qualified key ID (e.g. did:example:abc#encryption-key-id) of
@@ -58,7 +51,7 @@ pub struct Recipient {
     pub public_key: PublicKey,
 }
 
-impl JweBuilder<NoPayload, NoRecipients> {
+impl JweBuilder<NoPayload> {
     /// Create a new JWE builder.
     #[must_use]
     pub const fn new() -> Self {
@@ -66,12 +59,12 @@ impl JweBuilder<NoPayload, NoRecipients> {
             content_algorithm: ContentAlgorithm::A256Gcm,
             key_algorithm: KeyAlgorithm::EcdhEs,
             payload: NoPayload,
-            recipients: NoRecipients,
+            recipients: vec![],
         }
     }
 }
 
-impl<P, R> JweBuilder<P, R> {
+impl<P> JweBuilder<P> {
     /// The content encryption algorithm to use to encrypt the payload.
     #[must_use]
     pub const fn content_algorithm(mut self, algorithm: ContentAlgorithm) -> Self {
@@ -85,37 +78,7 @@ impl<P, R> JweBuilder<P, R> {
         self.key_algorithm = algorithm;
         self
     }
-}
 
-impl<P> JweBuilder<P, NoRecipients> {
-    /// Add key encryption material for a JWE recipient.
-    ///
-    /// # Arguments
-    ///
-    /// * `key_id` - The fully qualified key ID of the public key to be used
-    ///   to encrypt the content encryption key (CEK). For example,
-    ///   `did:example:abc#encryption-key-id`.
-    ///
-    /// * `public_key` - The recipient's public key, in bytes, for encrypting
-    ///   the content.
-    pub fn add_recipient(
-        self, key_id: impl Into<String>, public_key: PublicKey,
-    ) -> JweBuilder<P, WithRecipients> {
-        let recipient = Recipient {
-            key_id: key_id.into(),
-            public_key,
-        };
-
-        JweBuilder {
-            content_algorithm: self.content_algorithm,
-            key_algorithm: self.key_algorithm,
-            payload: self.payload,
-            recipients: WithRecipients(vec![recipient]),
-        }
-    }
-}
-
-impl<P> JweBuilder<P, WithRecipients> {
     /// Add key encryption material for a JWE recipient.
     ///
     /// # Arguments
@@ -128,18 +91,17 @@ impl<P> JweBuilder<P, WithRecipients> {
     ///   the content.
     #[must_use]
     pub fn add_recipient(mut self, key_id: impl Into<String>, public_key: PublicKey) -> Self {
-        let recipient = Recipient {
+        self.recipients.push(Recipient {
             key_id: key_id.into(),
             public_key,
-        };
-        self.recipients.0.push(recipient);
+        });
         self
     }
 }
 
-impl<R> JweBuilder<NoPayload, R> {
+impl JweBuilder<NoPayload> {
     /// Set the payload to be encrypted.
-    pub fn payload<T: Serialize + Send>(self, payload: &T) -> JweBuilder<WithPayload<'_, T>, R> {
+    pub fn payload<T: Serialize + Send>(self, payload: &T) -> JweBuilder<WithPayload<'_, T>> {
         JweBuilder {
             content_algorithm: self.content_algorithm,
             key_algorithm: self.key_algorithm,
@@ -149,13 +111,17 @@ impl<R> JweBuilder<NoPayload, R> {
     }
 }
 
-impl<T: Serialize + Send> JweBuilder<WithPayload<'_, T>, WithRecipients> {
+impl<T: Serialize + Send> JweBuilder<WithPayload<'_, T>> {
     /// Build the JWE.
     ///
     /// # Errors
     /// LATER: add error docs
     pub fn build(self) -> Result<Jwe> {
-        let recipients = self.recipients.0.as_slice();
+        if self.recipients.is_empty() {
+            return Err(anyhow!("no recipients provided"));
+        }
+
+        let recipients = self.recipients.as_slice();
 
         // select key management algorithm
         match self.key_algorithm {

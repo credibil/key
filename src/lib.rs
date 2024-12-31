@@ -14,7 +14,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 pub use crate::jose::jwa::Algorithm;
-pub use crate::jose::jwe::{PublicKey, SharedSecret};
+pub use crate::jose::jwe::{PublicKey, SecretKey, SharedSecret};
 pub use crate::jose::jwk::PublicKeyJwk;
 pub use crate::jose::jws::Jws;
 pub use crate::jose::jwt::Jwt;
