@@ -114,7 +114,7 @@ pub trait Receiver: Send + Sync {
     ///
     /// impl Receiver for KeyStore {
     ///    fn key_id(&self) -> String {
-    ///         "some-kid".to_string()
+    ///         "did:example:alice#key-id".to_string()
     ///    }
     ///
     /// async fn shared_secret(&self, sender_public: PublicKey) -> Result<SharedSecret> {

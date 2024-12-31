@@ -370,7 +370,7 @@ mod test {
 
         let jwe = JweBuilder::new()
             .payload(&plaintext)
-            .add_recipient("some-kid", public_key)
+            .add_recipient("did:example:alice#key-id", public_key)
             .build()
             .expect("should encrypt");
 
@@ -389,7 +389,7 @@ mod test {
             .content_algorithm(ContentAlgorithm::A256Gcm)
             .key_algorithm(KeyAlgorithm::EcdhEsA256Kw)
             .payload(&plaintext)
-            .add_recipient("some-kid", public_key)
+            .add_recipient("did:example:alice#key-id", public_key)
             .build()
             .expect("should encrypt");
 
@@ -408,7 +408,7 @@ mod test {
             .content_algorithm(ContentAlgorithm::A256Gcm)
             .key_algorithm(KeyAlgorithm::EciesEs256K)
             .payload(&plaintext)
-            .add_recipient("some-kid", public_key)
+            .add_recipient("did:example:alice#key-id", public_key)
             .build()
             .expect("should encrypt");
 
@@ -436,7 +436,7 @@ mod test {
 
     impl Receiver for X25519 {
         fn key_id(&self) -> String {
-            "some-kid".to_string()
+            "did:example:alice#key-id".to_string()
         }
 
         async fn shared_secret(&self, sender_public: PublicKey) -> Result<SharedSecret> {
@@ -463,7 +463,7 @@ mod test {
 
     impl Receiver for Es256k {
         fn key_id(&self) -> String {
-            "some-kid".to_string()
+            "did:example:alice#key-id".to_string()
         }
 
         async fn shared_secret(&self, sender_public: PublicKey) -> Result<SharedSecret> {
