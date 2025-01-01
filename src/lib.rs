@@ -33,7 +33,7 @@ pub trait KeyOps: Send + Sync {
     ///
     /// # Errors
     ///
-    /// Returns an error if the signer cannot be created.
+    /// Returns an error if the Signer cannot be created.
     fn signer(&self, controller: &str) -> Result<impl Signer>;
 
     /// Receiver provides data encryption/decryption functionality.
@@ -43,7 +43,7 @@ pub trait KeyOps: Send + Sync {
     ///
     /// # Errors
     ///
-    /// Returns an error if the encryptor cannot be created.
+    /// Returns an error if the Receiver cannot be created.
     fn receiver(&self, controller: &str) -> Result<impl Receiver>;
 }
 
