@@ -82,7 +82,7 @@ impl PublicKeyJwk {
         if key_bytes.len() - 2 != 32 {
             return Err(anyhow!("key is not 32 bytes long"));
         }
-        if key_bytes[0..2] != ED25519_CODEC && key_bytes[0..2] != X25519_CODEC{
+        if key_bytes[0..2] != ED25519_CODEC && key_bytes[0..2] != X25519_CODEC {
             return Err(anyhow!("not Ed25519"));
         }
 
