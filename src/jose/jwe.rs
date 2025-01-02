@@ -177,7 +177,7 @@ struct ProtectedFlat {
 /// of being nested within the "recipients" member.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Recipients {
-    /// Single recipient (flattened JWE JSON syntax).
+    /// Single recipient (uses flattened JWE JSON syntax).
     One(KeyEncryption),
 
     /// Multiple recipients (nested JWE JSON syntax).
