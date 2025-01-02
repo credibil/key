@@ -1097,7 +1097,6 @@ dependencies = [
  "chacha20poly1305",
  "ciborium",
  "coset",
- "curve25519-dalek",
  "ecdsa",
  "ecies",
  "ed25519-dalek",
