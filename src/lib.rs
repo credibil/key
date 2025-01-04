@@ -59,9 +59,11 @@ pub trait Signer: Send + Sync {
     /// `TrySign` is the fallible version of Sign.
     fn try_sign(&self, msg: &[u8]) -> impl Future<Output = Result<Vec<u8>>> + Send;
 
-    /// The public key of the key pair used in signing. The possibility of key
-    /// rotation mean this key should only be referenced at the point of signing.
-    fn public_key(&self) -> impl Future<Output = Result<Vec<u8>>> + Send;
+    /// The verifying key (public key) from the signing keypair.
+    ///
+    /// The possibility of key rotation mean this key should only be referenced
+    /// at the point of verifying a signature.
+    fn verifying_key(&self) -> impl Future<Output = Result<Vec<u8>>> + Send;
 
     /// Signature algorithm used by the signer.
     fn algorithm(&self) -> Algorithm;
@@ -77,7 +79,8 @@ pub trait Signer: Send + Sync {
 /// Receiver encapsulates functionality implementers are required to implement
 /// in order for receivers (recipients) to decrypt an encrypted message.
 pub trait Receiver: Send + Sync {
-    /// Receiver's public key identifier.
+    /// Receiver's public key identifier. For example,
+    /// `did:example:alice#key-id`.
     fn key_id(&self) -> String;
 
     /// Derive the receiver's shared secret used for decrypting (or direct use)
