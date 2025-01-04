@@ -150,11 +150,14 @@ pub enum KeyType {
 /// Cryptographic curve type.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
 pub enum Curve {
-    /// Ed25519 curve
+    /// Ed25519 signature (DSA) key pairs.
     #[default]
     Ed25519,
 
-    /// secp256k1 curve
+    /// X25519 function (encryption) key pairs.
+    X25519,
+
+    /// secp256k1 curve.
     #[serde(rename = "ES256K", alias = "secp256k1")]
     Es256K,
 }

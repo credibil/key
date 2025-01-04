@@ -272,6 +272,7 @@ impl PublicKeyJwk {
         match self.crv {
             Curve::Es256K => self.verify_es256k(msg, sig),
             Curve::Ed25519 => self.verify_eddsa(msg, sig),
+            Curve::X25519 => bail!("unsupported DSA curve"),
         }
     }
 

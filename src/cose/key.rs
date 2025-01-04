@@ -130,6 +130,7 @@ impl From<Curve> for Value {
         match crv {
             Curve::Ed25519 => Self::Integer(6.into()),
             Curve::Es256K => Self::Integer(8.into()),
+            Curve::X25519 => Self::Integer(1.into()),
         }
     }
 }
