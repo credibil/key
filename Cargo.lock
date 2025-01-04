@@ -355,17 +355,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "derive_more"
-version = "0.99.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f33878137e4dafd7fa914ad4e259e18a4e8e532b9617a2d0150262bf53abfce"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.94",
-]
-
-[[package]]
 name = "digest"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1108,7 +1097,6 @@ dependencies = [
  "chacha20poly1305",
  "ciborium",
  "coset",
- "curve25519-dalek",
  "ecdsa",
  "ecies",
  "ed25519-dalek",
@@ -1123,7 +1111,6 @@ dependencies = [
  "tokio",
  "tracing",
  "x25519-dalek",
- "xeddsa",
  "zeroize",
 ]
 
@@ -1266,22 +1253,6 @@ dependencies = [
  "curve25519-dalek",
  "rand_core",
  "serde",
- "zeroize",
-]
-
-[[package]]
-name = "xeddsa"
-version = "1.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2460c9a9c9d1331ff6801e87badb517faa6b6758e5fb585eb27daf7622c6d5ad"
-dependencies = [
- "curve25519-dalek",
- "derive_more",
- "ed25519",
- "ed25519-dalek",
- "rand",
- "sha2 0.10.8",
- "x25519-dalek",
  "zeroize",
 ]
 

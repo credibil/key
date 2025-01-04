@@ -419,8 +419,14 @@ mod test {
         assert_eq!(plaintext, decrypted);
     }
 
+    // derive X25519 keypair from Ed25519 keypair (opposite of XEdDSA)
+    // XEdDSA resources:
+    // - https://signal.org/docs/specifications/xeddsa
+    // - https://github.com/Zentro/lambx
+    // - https://codeberg.org/SpotNuts/xeddsa
+
     #[test]
-    fn verifying_key() {
+    fn edx25519() {
         const ALICE_SECRET: &str = "8rmFFiUcTjjrL5mgBzWykaH39D64VD0mbDHwILvsu30";
         const ALICE_PUBLIC: &str = "RW-Q0fO2oECyLs4rZDZZo4p6b7pu7UF2eu9JBsktDco";
 
@@ -540,7 +546,7 @@ mod test {
             let hash = sha2::Sha512::digest(signing_key.as_bytes());
             let mut hashed = [0u8; PUBLIC_KEY_LENGTH];
             hashed.copy_from_slice(&hash[..PUBLIC_KEY_LENGTH]);
-            
+
             let secret_key = x25519_dalek::StaticSecret::from(hashed);
             let public_key =
                 x25519_dalek::PublicKey::from(verifying_key.to_montgomery().to_bytes());
