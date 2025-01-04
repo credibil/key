@@ -442,7 +442,6 @@ mod test {
         let alice_montgomery = alice_verifier.to_montgomery();
 
         let shared_secret = ephemeral_secret.diffie_hellman(&alice_montgomery.to_bytes().into());
-        println!("epemeral: {:?}", Base64UrlUnpadded::encode_string(&shared_secret.to_bytes()));
 
         // RECEIVER: diffie-hellman using ephemeral public
         let hash = sha2::Sha512::digest(&alice_secret);
@@ -451,7 +450,6 @@ mod test {
         let alice_x_secret = x25519_dalek::StaticSecret::from(hashed);
 
         let shared_secret = alice_x_secret.diffie_hellman(&ephemeral_public);
-        println!("alice: {:?}", Base64UrlUnpadded::encode_string(&shared_secret.to_bytes()));
     }
 
     #[tokio::test]
