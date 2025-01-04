@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use base64ct::{Base64UrlUnpadded, Encoding};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 pub const TAG_PUBKEY_FULL: u8 = 0x04;
@@ -20,8 +21,26 @@ pub const TAG_PUBKEY_FULL: u8 = 0x04;
 pub struct SecretKey([u8; 32]);
 
 impl From<[u8; 32]> for SecretKey {
-    fn from(key: [u8; 32]) -> Self {
-        Self(key)
+    fn from(val: [u8; 32]) -> Self {
+        Self(val)
+    }
+}
+
+impl TryFrom<&str> for SecretKey {
+    type Error = anyhow::Error;
+
+    fn try_from(val: &str) -> Result<Self, Self::Error> {
+        let decoded = Base64UrlUnpadded::decode_vec(val)?;
+        let bytes: [u8; 32] = decoded.try_into().map_err(|_| anyhow!("invalid key"))?;
+        Ok(Self::from(bytes))
+    }
+}
+
+impl TryFrom<&String> for SecretKey {
+    type Error = anyhow::Error;
+
+    fn try_from(val: &String) -> Result<Self, Self::Error> {
+        Self::try_from(val.as_str())
     }
 }
 
@@ -171,6 +190,24 @@ impl TryFrom<Vec<u8>> for PublicKey {
 
     fn try_from(val: Vec<u8>) -> Result<Self> {
         Self::try_from(val.as_slice())
+    }
+}
+
+impl TryFrom<&str> for PublicKey {
+    type Error = anyhow::Error;
+
+    fn try_from(val: &str) -> Result<Self, Self::Error> {
+        let decoded = Base64UrlUnpadded::decode_vec(val)?;
+        let bytes: [u8; 32] = decoded.try_into().map_err(|_| anyhow!("invalid key"))?;
+        Ok(Self::from(bytes))
+    }
+}
+
+impl TryFrom<&String> for PublicKey {
+    type Error = anyhow::Error;
+
+    fn try_from(val: &String) -> Result<Self, Self::Error> {
+        Self::try_from(val.as_str())
     }
 }
 

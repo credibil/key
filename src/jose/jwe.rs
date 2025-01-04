@@ -177,7 +177,7 @@ struct ProtectedFlat {
 /// of being nested within the "recipients" member.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Recipients {
-    /// Single recipient (flattened JWE JSON syntax).
+    /// Single recipient (uses flattened JWE JSON syntax).
     One(KeyEncryption),
 
     /// Multiple recipients (nested JWE JSON syntax).
@@ -291,7 +291,9 @@ pub enum Zip {
 
 #[cfg(test)]
 mod test {
+    use ed25519_dalek::PUBLIC_KEY_LENGTH;
     use rand::rngs::OsRng;
+    use sha2::Digest;
 
     use super::*;
 
@@ -331,6 +333,12 @@ mod test {
     // 	"tag": "Mz-VPPyU4RlcuYv1IwIvzw"
     // }
 
+    // Ed25519: VerifyingKey::from(EdwardsPoint::mul_base(&expanded_secret_key.scalar))
+    // X25519:  PublicKey(EdwardsPoint::mul_base_clamped(secret.0).to_montgomery())
+    // ECDH: x25519(k: [u8; 32], u: [u8; 32]) -> [u8; 32] {
+    //    MontgomeryPoint(u).mul_clamped(k).to_bytes()
+    // }
+
     // Use top-level encrypt method to shortcut using the builder
     #[tokio::test]
     async fn simple() {
@@ -357,7 +365,6 @@ mod test {
         let jwe: Jwe = compact_jwe.parse().expect("should parse");
 
         let decrypted: String = decrypt(&jwe, &key_store).await.expect("should decrypt");
-
         assert_eq!(plaintext, decrypted);
     }
 
@@ -375,7 +382,6 @@ mod test {
             .expect("should encrypt");
 
         let decrypted: String = decrypt(&jwe, &key_store).await.expect("should decrypt");
-
         assert_eq!(plaintext, decrypted);
     }
 
@@ -394,8 +400,56 @@ mod test {
             .expect("should encrypt");
 
         let decrypted: String = decrypt(&jwe, &key_store).await.expect("should decrypt");
-
         assert_eq!(plaintext, decrypted);
+    }
+
+    #[tokio::test]
+    async fn ed25519() {
+        let key_store = Ed25519::new();
+        let plaintext = "The true sign of intelligence is not knowledge but imagination.";
+        let public_key = PublicKey::from(key_store.public_key);
+
+        let jwe = JweBuilder::new()
+            .payload(&plaintext)
+            .add_recipient("did:example:alice#key-id", public_key)
+            .build()
+            .expect("should encrypt");
+
+        let decrypted: String = decrypt(&jwe, &key_store).await.expect("should decrypt");
+        assert_eq!(plaintext, decrypted);
+    }
+
+    // derive X25519 keypair from Ed25519 keypair (reverse of XEdDSA)
+    // XEdDSA resources:
+    // - https://signal.org/docs/specifications/xeddsa
+    // - https://github.com/Zentro/lambx
+    // - https://codeberg.org/SpotNuts/xeddsa
+    #[test]
+    fn edx25519() {
+        const ALICE_SECRET: &str = "8rmFFiUcTjjrL5mgBzWykaH39D64VD0mbDHwILvsu30";
+        const ALICE_PUBLIC: &str = "RW-Q0fO2oECyLs4rZDZZo4p6b7pu7UF2eu9JBsktDco";
+
+        let alice_secret: [u8; PUBLIC_KEY_LENGTH] =
+            Base64UrlUnpadded::decode_vec(ALICE_SECRET).unwrap().try_into().unwrap();
+        let alice_public: [u8; PUBLIC_KEY_LENGTH] =
+            Base64UrlUnpadded::decode_vec(ALICE_PUBLIC).unwrap().try_into().unwrap();
+
+        let ephemeral_secret = x25519_dalek::EphemeralSecret::random_from_rng(rand::thread_rng());
+        let ephemeral_public = x25519_dalek::PublicKey::from(&ephemeral_secret);
+
+        // SENDER: diffie-hellman using Alice public -> montgomery
+        let alice_verifier = ed25519_dalek::VerifyingKey::from_bytes(&alice_public).unwrap();
+        let alice_montgomery = alice_verifier.to_montgomery();
+        let ephemeral_dh = ephemeral_secret.diffie_hellman(&alice_montgomery.to_bytes().into());
+
+        // RECEIVER: diffie-hellman using ephemeral public
+        let hash = sha2::Sha512::digest(&alice_secret);
+        let mut hashed = [0u8; PUBLIC_KEY_LENGTH];
+        hashed.copy_from_slice(&hash[..PUBLIC_KEY_LENGTH]);
+        let alice_x_secret = x25519_dalek::StaticSecret::from(hashed);
+        let alice_dh = alice_x_secret.diffie_hellman(&ephemeral_public);
+
+        assert_eq!(ephemeral_dh.as_bytes(), alice_dh.as_bytes());
     }
 
     #[tokio::test]
@@ -467,8 +521,47 @@ mod test {
         }
 
         async fn shared_secret(&self, sender_public: PublicKey) -> Result<SharedSecret> {
-            let secret: [u8; 32] = self.secret_key.serialize();
+            let secret: [u8; PUBLIC_KEY_LENGTH] = self.secret_key.serialize();
             let secret_key = SecretKey::try_from(secret).expect("should convert");
+            secret_key.shared_secret(sender_public)
+        }
+    }
+
+    // Basic key store for testing
+    struct Ed25519 {
+        public_key: x25519_dalek::PublicKey,
+        secret_key: x25519_dalek::StaticSecret,
+    }
+
+    impl Ed25519 {
+        fn new() -> Self {
+            // Ed25519 keypair
+            let signing_key = ed25519_dalek::SigningKey::generate(&mut OsRng);
+            let verifying_key = signing_key.verifying_key();
+
+            // derive X25519 keypair from Ed25519 keypair
+            let hash = sha2::Sha512::digest(signing_key.as_bytes());
+            let mut hashed = [0u8; PUBLIC_KEY_LENGTH];
+            hashed.copy_from_slice(&hash[..PUBLIC_KEY_LENGTH]);
+
+            let secret_key = x25519_dalek::StaticSecret::from(hashed);
+            let public_key =
+                x25519_dalek::PublicKey::from(verifying_key.to_montgomery().to_bytes());
+
+            Self {
+                public_key,
+                secret_key,
+            }
+        }
+    }
+
+    impl Receiver for Ed25519 {
+        fn key_id(&self) -> String {
+            "did:example:alice#key-id".to_string()
+        }
+
+        async fn shared_secret(&self, sender_public: PublicKey) -> Result<SharedSecret> {
+            let secret_key = SecretKey::from(self.secret_key.to_bytes());
             secret_key.shared_secret(sender_public)
         }
     }

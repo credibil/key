@@ -8,6 +8,7 @@ use anyhow::{anyhow, Result};
 use base64ct::{Base64UrlUnpadded, Encoding};
 use chacha20poly1305::XChaCha20Poly1305;
 // use ecies::consts::{AEAD_TAG_LENGTH, NONCE_LENGTH, UNCOMPRESSED_PUBLIC_KEY_SIZE};
+use ed25519_dalek::PUBLIC_KEY_LENGTH;
 use rand::rngs::OsRng;
 use serde::Serialize;
 use x25519_dalek::EphemeralSecret;
@@ -182,7 +183,7 @@ impl<T: Serialize + Send> JweBuilder<WithPayload<'_, T>> {
 // Management Algorithms ("alg" parameter).
 trait Algorithm {
     // Generate a Content Encryption Key (CEK) for the JWE.
-    fn cek(&self) -> [u8; 32];
+    fn cek(&self) -> [u8; PUBLIC_KEY_LENGTH];
 
     // Generate the key encryption material for the JWE recipients.
     fn recipients(&self) -> Result<Recipients>;
@@ -193,8 +194,8 @@ trait Algorithm {
 // ----------------
 #[derive(Zeroize, ZeroizeOnDrop)]
 struct EcdhEs {
-    ephemeral_public: [u8; 32],
-    cek: [u8; 32],
+    ephemeral_public: [u8; PUBLIC_KEY_LENGTH],
+    cek: [u8; PUBLIC_KEY_LENGTH],
 }
 
 impl From<&[Recipient]> for EcdhEs {
@@ -212,7 +213,7 @@ impl From<&[Recipient]> for EcdhEs {
 }
 
 impl Algorithm for EcdhEs {
-    fn cek(&self) -> [u8; 32] {
+    fn cek(&self) -> [u8; PUBLIC_KEY_LENGTH] {
         self.cek
     }
 
@@ -229,7 +230,7 @@ impl Algorithm for EcdhEs {
                 },
                 ..Header::default()
             },
-            encrypted_key: Base64UrlUnpadded::encode_string(&[0; 32]),
+            encrypted_key: Base64UrlUnpadded::encode_string(&[0; PUBLIC_KEY_LENGTH]),
         };
 
         Ok(Recipients::One(key_encryption))
@@ -243,7 +244,7 @@ impl Algorithm for EcdhEs {
 struct EcdhEsA256Kw<'a> {
     #[zeroize(skip)]
     recipients: &'a [Recipient],
-    cek: [u8; 32],
+    cek: [u8; PUBLIC_KEY_LENGTH],
 }
 
 impl<'a> From<&'a [Recipient]> for EcdhEsA256Kw<'a> {
@@ -256,7 +257,7 @@ impl<'a> From<&'a [Recipient]> for EcdhEsA256Kw<'a> {
 }
 
 impl Algorithm for EcdhEsA256Kw<'_> {
-    fn cek(&self) -> [u8; 32] {
+    fn cek(&self) -> [u8; PUBLIC_KEY_LENGTH] {
         self.cek
     }
 
@@ -302,7 +303,7 @@ impl Algorithm for EcdhEsA256Kw<'_> {
 struct EciesEs256K<'a> {
     #[zeroize(skip)]
     recipients: &'a [Recipient],
-    cek: [u8; 32],
+    cek: [u8; PUBLIC_KEY_LENGTH],
 }
 
 impl<'a> From<&'a [Recipient]> for EciesEs256K<'a> {
@@ -315,7 +316,7 @@ impl<'a> From<&'a [Recipient]> for EciesEs256K<'a> {
 }
 
 impl Algorithm for EciesEs256K<'_> {
-    fn cek(&self) -> [u8; 32] {
+    fn cek(&self) -> [u8; PUBLIC_KEY_LENGTH] {
         self.cek
     }
 

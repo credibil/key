@@ -34,6 +34,7 @@ use crate::jose::jwe::KeyAlgorithm;
 use crate::{Curve, KeyType};
 
 const ED25519_CODEC: [u8; 2] = [0xed, 0x01];
+const X25519_CODEC: [u8; 2] = [0xec, 0x01];
 
 /// Alias for multi-base encoded string.
 pub type MultiKey = String;
@@ -81,7 +82,7 @@ impl PublicKeyJwk {
         if key_bytes.len() - 2 != 32 {
             return Err(anyhow!("key is not 32 bytes long"));
         }
-        if key_bytes[0..2] != ED25519_CODEC {
+        if key_bytes[0..2] != ED25519_CODEC && key_bytes[0..2] != X25519_CODEC {
             return Err(anyhow!("not Ed25519"));
         }
 
