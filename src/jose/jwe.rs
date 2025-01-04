@@ -440,16 +440,16 @@ mod test {
         // SENDER: diffie-hellman using Alice public -> montgomery
         let alice_verifier = ed25519_dalek::VerifyingKey::from_bytes(&alice_public).unwrap();
         let alice_montgomery = alice_verifier.to_montgomery();
-
-        let shared_secret = ephemeral_secret.diffie_hellman(&alice_montgomery.to_bytes().into());
+        let ephemeral_dh = ephemeral_secret.diffie_hellman(&alice_montgomery.to_bytes().into());
 
         // RECEIVER: diffie-hellman using ephemeral public
         let hash = sha2::Sha512::digest(&alice_secret);
         let mut hashed = [0u8; PUBLIC_KEY_LENGTH];
         hashed.copy_from_slice(&hash[..PUBLIC_KEY_LENGTH]);
         let alice_x_secret = x25519_dalek::StaticSecret::from(hashed);
+        let alice_dh = alice_x_secret.diffie_hellman(&ephemeral_public);
 
-        let shared_secret = alice_x_secret.diffie_hellman(&ephemeral_public);
+        assert_eq!(ephemeral_dh.as_bytes(), alice_dh.as_bytes());
     }
 
     #[tokio::test]
