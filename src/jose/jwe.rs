@@ -419,12 +419,11 @@ mod test {
         assert_eq!(plaintext, decrypted);
     }
 
-    // derive X25519 keypair from Ed25519 keypair (opposite of XEdDSA)
+    // derive X25519 keypair from Ed25519 keypair (reverse of XEdDSA)
     // XEdDSA resources:
     // - https://signal.org/docs/specifications/xeddsa
     // - https://github.com/Zentro/lambx
     // - https://codeberg.org/SpotNuts/xeddsa
-
     #[test]
     fn edx25519() {
         const ALICE_SECRET: &str = "8rmFFiUcTjjrL5mgBzWykaH39D64VD0mbDHwILvsu30";
