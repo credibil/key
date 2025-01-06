@@ -25,7 +25,7 @@ pub struct JweBuilder<P> {
     content_algorithm: ContentAlgorithm,
     key_algorithm: KeyAlgorithm,
     payload: P,
-    pub(crate) recipients: Vec<Recipient>,
+    recipients: Vec<Recipient>,
 }
 
 impl Default for JweBuilder<NoPayload> {
@@ -180,7 +180,7 @@ impl<T: Serialize + Send> JweBuilder<Payload<'_, T>> {
     }
 }
 
-// Trait to accommodate for differences in the way key encryption is handled for 
+// Trait to accommodate for differences in the way key encryption is handled for
 // each Key Management Algorithm ("alg" parameter).
 trait KeyEncypter {
     // Generate a Content Encryption Key (CEK) for the JWE.
