@@ -121,29 +121,30 @@ impl<T: Serialize + Send> JweBuilder<WithPayload<'_, T>> {
         if self.recipients.is_empty() {
             return Err(anyhow!("no recipients provided"));
         }
-
-        let recipients = self.recipients.as_slice();
-
-        // select key management algorithm
-        match self.key_algorithm {
-            KeyAlgorithm::EcdhEs => {
-                if recipients.len() != 1 {
-                    return Err(anyhow!("too many recipients for ECDH-ES without A256KW"));
-                }
-                self.encrypt(&EcdhEs::from(recipients))
-            }
-            KeyAlgorithm::EcdhEsA256Kw => self.encrypt(&EcdhEsA256Kw::from(recipients)),
-            KeyAlgorithm::EciesEs256K => self.encrypt(&EciesEs256K::from(recipients)),
+        if self.key_algorithm == KeyAlgorithm::EcdhEs && self.recipients.len() != 1 {
+            return Err(anyhow!("too many recipients for ECDH-ES without A256KW"));
         }
+
+        // let mut jwe = self.encrypt()?;
+        // jwe.recipients
+
+        self.encrypt()
     }
 
-    fn encrypt(&self, alg: &impl Algorithm) -> Result<Jwe> {
+    fn encrypt(&self) -> Result<Jwe> {
+        let recipients = self.recipients.as_slice();
+        let encrypter: &dyn KeyEncypter = match self.key_algorithm {
+            KeyAlgorithm::EcdhEs => &EcdhEs::from(recipients),
+            KeyAlgorithm::EcdhEsA256Kw => &EcdhEsA256Kw::from(recipients),
+            KeyAlgorithm::EciesEs256K => &EciesEs256K::from(recipients),
+        };
+
         let mut jwe = Jwe {
             protected: Protected {
                 enc: self.content_algorithm.clone(),
                 alg: None,
             },
-            recipients: alg.recipients()?,
+            recipients: encrypter.recipients()?,
             ..Jwe::default()
         };
 
@@ -157,14 +158,14 @@ impl<T: Serialize + Send> JweBuilder<WithPayload<'_, T>> {
         let (nonce, tag) = match self.content_algorithm {
             ContentAlgorithm::A256Gcm => {
                 let nonce = Aes256Gcm::generate_nonce(&mut rand::thread_rng());
-                let tag = Aes256Gcm::new(&alg.cek().into())
+                let tag = Aes256Gcm::new(&encrypter.cek().into())
                     .encrypt_in_place_detached(&nonce, &aad, &mut buffer)
                     .map_err(|e| anyhow!("issue encrypting: {e}"))?;
                 (nonce.to_vec(), tag.to_vec())
             }
             ContentAlgorithm::XChaCha20Poly1305 => {
                 let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
-                let tag = XChaCha20Poly1305::new(&alg.cek().into())
+                let tag = XChaCha20Poly1305::new(&encrypter.cek().into())
                     .encrypt_in_place_detached(&nonce, &aad, &mut buffer)
                     .map_err(|e| anyhow!("issue encrypting: {e}"))?;
                 (nonce.to_vec(), tag.to_vec())
@@ -179,9 +180,9 @@ impl<T: Serialize + Send> JweBuilder<WithPayload<'_, T>> {
     }
 }
 
-// Trait to allow for differences encryption process for different Key
-// Management Algorithms ("alg" parameter).
-trait Algorithm {
+// Trait to accommodate for differences in the way key encryption is handled for 
+// each Key Management Algorithm ("alg" parameter).
+trait KeyEncypter {
     // Generate a Content Encryption Key (CEK) for the JWE.
     fn cek(&self) -> [u8; PUBLIC_KEY_LENGTH];
 
@@ -212,7 +213,7 @@ impl From<&[Recipient]> for EcdhEs {
     }
 }
 
-impl Algorithm for EcdhEs {
+impl KeyEncypter for EcdhEs {
     fn cek(&self) -> [u8; PUBLIC_KEY_LENGTH] {
         self.cek
     }
@@ -256,7 +257,7 @@ impl<'a> From<&'a [Recipient]> for EcdhEsA256Kw<'a> {
     }
 }
 
-impl Algorithm for EcdhEsA256Kw<'_> {
+impl KeyEncypter for EcdhEsA256Kw<'_> {
     fn cek(&self) -> [u8; PUBLIC_KEY_LENGTH] {
         self.cek
     }
@@ -315,7 +316,7 @@ impl<'a> From<&'a [Recipient]> for EciesEs256K<'a> {
     }
 }
 
-impl Algorithm for EciesEs256K<'_> {
+impl KeyEncypter for EciesEs256K<'_> {
     fn cek(&self) -> [u8; PUBLIC_KEY_LENGTH] {
         self.cek
     }

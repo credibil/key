@@ -470,6 +470,20 @@ mod test {
         assert_eq!(plaintext, decrypted);
     }
 
+    // // round trip: encrypt and then decrypt
+    // #[tokio::test]
+    // async fn two_step() {
+    //     let key_store = X25519::new();
+    //     let plaintext = "The true sign of intelligence is not knowledge but imagination.";
+    //     let public_key = PublicKey::from(key_store.public_key);
+
+    //     let mut jwe = JweBuilder::new().payload(&plaintext).encrypt().expect("should encrypt");
+    //     jwe.add_recipient("did:example:alice#key-id", public_key).build().expect("should build");
+
+    //     let decrypted: String = decrypt(&jwe, &key_store).await.expect("should decrypt");
+    //     assert_eq!(plaintext, decrypted);
+    // }
+
     // Basic key store for testing
     struct X25519 {
         public_key: x25519_dalek::PublicKey,
