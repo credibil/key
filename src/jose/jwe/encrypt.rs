@@ -119,24 +119,23 @@ impl<T: Serialize + Send> JweBuilder<Payload<'_, T>> {
     /// LATER: add error docs
     pub fn build(self) -> Result<Jwe> {
         if self.recipients.is_empty() {
-            return Err(anyhow!("no recipients provided"));
+            return Err(anyhow!("no recipients set"));
         }
-        if self.key_algorithm == KeyAlgorithm::EcdhEs && self.recipients.len() != 1 {
-            return Err(anyhow!("too many recipients for ECDH-ES without A256KW"));
-        }
-
-        // let mut jwe = self.encrypt()?;
-        // jwe.recipients
-
         self.encrypt()
     }
 
     fn encrypt(&self) -> Result<Jwe> {
         let recipients = self.recipients.as_slice();
+
         let encrypter: &dyn KeyEncypter = match self.key_algorithm {
-            KeyAlgorithm::EcdhEs => &EcdhEs::from(recipients),
-            KeyAlgorithm::EcdhEsA256Kw => &EcdhEsA256Kw::from(recipients),
-            KeyAlgorithm::EciesEs256K => &EciesEs256K::from(recipients),
+            KeyAlgorithm::EcdhEs => {
+                if recipients.len() != 1 {
+                    return Err(anyhow!("ECDH-ES requires a single recipient"));
+                }
+                &EcdhEs::from(&recipients[0])
+            }
+            KeyAlgorithm::EcdhEsA256Kw => &EcdhEsA256Kw::from(self.recipients.as_slice()),
+            KeyAlgorithm::EciesEs256K => &EciesEs256K::from(self.recipients.as_slice()),
         };
 
         let mut jwe = Jwe {
@@ -199,12 +198,12 @@ struct EcdhEs {
     cek: [u8; PUBLIC_KEY_LENGTH],
 }
 
-impl From<&[Recipient]> for EcdhEs {
-    fn from(recipients: &[Recipient]) -> Self {
+impl From<&Recipient> for EcdhEs {
+    fn from(recipient: &Recipient) -> Self {
         // generate CEK using ECDH-ES
         let ephemeral_secret = EphemeralSecret::random_from_rng(rand::thread_rng());
         let ephemeral_public = x25519_dalek::PublicKey::from(&ephemeral_secret).to_bytes();
-        let cek = ephemeral_secret.diffie_hellman(&recipients[0].public_key.into()).to_bytes();
+        let cek = ephemeral_secret.diffie_hellman(&recipient.public_key.into()).to_bytes();
 
         Self {
             ephemeral_public,
@@ -381,3 +380,122 @@ impl KeyEncypter for EciesEs256K<'_> {
         Ok(Recipients::Many { recipients })
     }
 }
+
+// /// Builds a JWE object using provided options.
+// pub struct Encrypter<P> {
+//     content_algorithm: ContentAlgorithm,
+//     key_algorithm: KeyAlgorithm,
+//     payload: P,
+// }
+
+// impl Default for Encrypter<NoPayload> {
+//     fn default() -> Self {
+//         Self::new()
+//     }
+// }
+
+// impl Encrypter<NoPayload> {
+//     /// Create a new JWE builder.
+//     #[must_use]
+//     pub const fn new() -> Self {
+//         Self {
+//             content_algorithm: ContentAlgorithm::A256Gcm,
+//             key_algorithm: KeyAlgorithm::EcdhEs,
+//             payload: NoPayload,
+//         }
+//     }
+// }
+
+// impl<P> Encrypter<P> {
+//     /// The content encryption algorithm to use to encrypt the payload.
+//     #[must_use]
+//     pub const fn content_algorithm(mut self, algorithm: ContentAlgorithm) -> Self {
+//         self.content_algorithm = algorithm;
+//         self
+//     }
+
+//     /// The key management algorithm to use for encrypting the JWE CEK.
+//     #[must_use]
+//     pub const fn key_algorithm(mut self, algorithm: KeyAlgorithm) -> Self {
+//         self.key_algorithm = algorithm;
+//         self
+//     }
+// }
+
+// impl Encrypter<NoPayload> {
+//     /// Set the payload to be encrypted.
+//     pub fn payload<T: Serialize + Send>(self, payload: &T) -> Encrypter<Payload<'_, T>> {
+//         Encrypter {
+//             content_algorithm: self.content_algorithm,
+//             key_algorithm: self.key_algorithm,
+//             payload: Payload(payload),
+//         }
+//     }
+// }
+
+// impl<T: Serialize + Send> Encrypter<Payload<'_, T>> {
+//     /// Build the JWE.
+//     ///
+//     /// # Errors
+//     /// LATER: add error docs
+//     pub fn build(self) -> Result<Encrypted> {
+//         let recipients = vec![];
+//         let encrypter: &dyn KeyEncypter = match self.key_algorithm {
+//             KeyAlgorithm::EcdhEsA256Kw => &EcdhEsA256Kw::from(recipients.as_slice()),
+//             KeyAlgorithm::EciesEs256K => &EciesEs256K::from(recipients.as_slice()),
+//             KeyAlgorithm::EcdhEs => {
+//                 return Err(anyhow!(
+//                     "ECDH-ES cannot be used to encrypt content without a recipient"
+//                 ))
+//             }
+//         };
+
+//         let mut jwe = Jwe {
+//             protected: Protected {
+//                 enc: self.content_algorithm.clone(),
+//                 alg: None,
+//             },
+//             ..Jwe::default()
+//         };
+
+//         let aad = serde_json::to_vec(&jwe.protected)?;
+//         jwe.aad = Base64UrlUnpadded::encode_string(&aad);
+
+//         // encrypt plaintext
+//         let mut buffer = serde_json::to_vec(self.payload.0)?;
+
+//         // select content encryption algorithm
+//         let (nonce, tag) = match self.content_algorithm {
+//             ContentAlgorithm::A256Gcm => {
+//                 let nonce = Aes256Gcm::generate_nonce(&mut rand::thread_rng());
+//                 let tag = Aes256Gcm::new(&encrypter.cek().into())
+//                     .encrypt_in_place_detached(&nonce, &aad, &mut buffer)
+//                     .map_err(|e| anyhow!("issue encrypting: {e}"))?;
+//                 (nonce.to_vec(), tag.to_vec())
+//             }
+//             ContentAlgorithm::XChaCha20Poly1305 => {
+//                 let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
+//                 let tag = XChaCha20Poly1305::new(&encrypter.cek().into())
+//                     .encrypt_in_place_detached(&nonce, &aad, &mut buffer)
+//                     .map_err(|e| anyhow!("issue encrypting: {e}"))?;
+//                 (nonce.to_vec(), tag.to_vec())
+//             }
+//         };
+
+//         jwe.iv = Base64UrlUnpadded::encode_string(&nonce);
+//         jwe.tag = Base64UrlUnpadded::encode_string(&tag);
+//         jwe.ciphertext = Base64UrlUnpadded::encode_string(&buffer);
+
+//         Ok(Encrypted {
+//             alg: self.key_algorithm,
+//             jwe,
+//             cek: encrypter.cek(),
+//         })
+//     }
+// }
+
+// pub struct Encrypted {
+//     alg: KeyAlgorithm,
+//     jwe: Jwe,
+//     cek: [u8; PUBLIC_KEY_LENGTH],
+// }
