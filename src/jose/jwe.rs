@@ -59,7 +59,10 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub use self::encrypt::{JweBuilder, NoPayload, Payload};
+pub use self::encrypt::{
+    a256gcm, ecdh_a256kw, ecies_es256k, xchacha20_poly1305, Encrypted, JweBuilder, NoPayload,
+    Payload,
+};
 pub use self::key::{PublicKey, SecretKey, SharedSecret};
 use crate::jose::jwk::PublicKeyJwk;
 use crate::Receiver;
@@ -234,6 +237,24 @@ pub struct Header {
     pub tag: Option<String>,
 }
 
+/// The algorithm used to perform authenticated content encryption. That is,
+/// encrypting the plaintext to produce the ciphertext and the Authentication
+/// Tag. MUST be an AEAD algorithm.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub enum ContentAlgorithm {
+    /// AES GCM using a 256-bit key.
+    #[default]
+    #[serde(rename = "A256GCM")]
+    A256Gcm,
+
+    /// XChaCha20-Poly1305 is a competitive alternative to AES-256-GCM because
+    /// it’s fast and constant-time without hardware acceleration (resistent
+    /// to cache-timing attacks). It also has longer nonce length to alleviate
+    /// the risk of birthday attacks when nonces are generated randomly.
+    #[serde(rename = "XChacha20+Poly1305")]
+    XChaCha20Poly1305,
+}
+
 /// The algorithm used to encrypt (key encryption) or derive (key agreement)
 /// the value of the shared content encryption key (CEK).
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -260,24 +281,6 @@ pub enum KeyAlgorithm {
     /// Uses AES 256 GCM and HKDF-SHA256.
     #[serde(rename = "ECIES-ES256K")]
     EciesEs256K,
-}
-
-/// The algorithm used to perform authenticated content encryption. That is,
-/// encrypting the plaintext to produce the ciphertext and the Authentication
-/// Tag. MUST be an AEAD algorithm.
-#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
-pub enum ContentAlgorithm {
-    /// AES GCM using a 256-bit key.
-    #[default]
-    #[serde(rename = "A256GCM")]
-    A256Gcm,
-
-    /// XChaCha20-Poly1305 is a competitive alternative to AES-256-GCM because
-    /// it’s fast and constant-time without hardware acceleration (resistent
-    /// to cache-timing attacks). It also has longer nonce length to alleviate
-    /// the risk of birthday attacks when nonces are generated randomly.
-    #[serde(rename = "XChacha20+Poly1305")]
-    XChaCha20Poly1305,
 }
 
 /// The compression algorithm applied to the plaintext before encryption.

@@ -121,12 +121,9 @@ impl<T: Serialize + Send> JweBuilder<Payload<'_, T>> {
         if self.recipients.is_empty() {
             return Err(anyhow!("no recipients set"));
         }
-        self.encrypt()
-    }
 
-    fn encrypt(&self) -> Result<Jwe> {
+        // generate CEK and encrypt for each recipient
         let recipients = self.recipients.as_slice();
-
         let key_encrypter: &dyn KeyEncypter = match self.key_algorithm {
             KeyAlgorithm::EcdhEs => {
                 if recipients.len() != 1 {
@@ -134,23 +131,17 @@ impl<T: Serialize + Send> JweBuilder<Payload<'_, T>> {
                 }
                 &EcdhEs::from(&recipients[0])
             }
-            KeyAlgorithm::EcdhEsA256Kw => &EcdhEsA256Kw::from(self.recipients.as_slice()),
-            KeyAlgorithm::EciesEs256K => &EciesEs256K::from(self.recipients.as_slice()),
+            KeyAlgorithm::EcdhEsA256Kw => &EcdhEsA256Kw::from(recipients),
+            KeyAlgorithm::EciesEs256K => &EciesEs256K::from(recipients),
         };
-
-        let mut jwe = Jwe {
-            protected: Protected {
-                enc: self.content_algorithm.clone(),
-                alg: None,
-            },
-            recipients: key_encrypter.recipients()?,
-            ..Jwe::default()
-        };
-
-        let aad = serde_json::to_vec(&jwe.protected)?;
-        jwe.aad = Base64UrlUnpadded::encode_string(&aad);
 
         // encrypt content
+        let protected = Protected {
+            enc: self.content_algorithm.clone(),
+            alg: None,
+        };
+        let aad = serde_json::to_vec(&protected)?;
+
         let encrypted = match self.content_algorithm {
             ContentAlgorithm::A256Gcm => a256gcm(self.payload.0, &key_encrypter.cek(), &aad)?,
             ContentAlgorithm::XChaCha20Poly1305 => {
@@ -158,11 +149,15 @@ impl<T: Serialize + Send> JweBuilder<Payload<'_, T>> {
             }
         };
 
-        jwe.iv = encrypted.iv;
-        jwe.tag = encrypted.tag;
-        jwe.ciphertext = Base64UrlUnpadded::encode_string(&encrypted.ciphertext);
-
-        Ok(jwe)
+        Ok(Jwe {
+            protected,
+            recipients: key_encrypter.recipients()?,
+            aad: Base64UrlUnpadded::encode_string(&aad),
+            iv: encrypted.iv,
+            tag: encrypted.tag,
+            ciphertext: Base64UrlUnpadded::encode_string(&encrypted.ciphertext),
+            ..Jwe::default()
+        })
     }
 }
 
@@ -290,16 +285,24 @@ impl KeyEncypter for EciesEs256K<'_> {
     }
 }
 
+/// Encrypted content.
+#[derive(Clone, Debug, Default)]
 pub struct Encrypted {
+    /// Initialization vector.
     pub iv: String,
+
+    /// Authentication tag.
     pub tag: String,
+
+    /// Encrypted content.
     pub ciphertext: Vec<u8>,
 }
 
+/// Encrypt the payload using A256GCM.
 pub fn a256gcm<T: Serialize>(
-    plaintext: &T, cek: &[u8; PUBLIC_KEY_LENGTH], aad: &[u8],
+    plaintext: T, cek: &[u8; PUBLIC_KEY_LENGTH], aad: &[u8],
 ) -> Result<Encrypted> {
-    let mut buffer = serde_json::to_vec(plaintext)?;
+    let mut buffer = serde_json::to_vec(&plaintext)?;
     let nonce = Aes256Gcm::generate_nonce(&mut rand::thread_rng());
     let tag = Aes256Gcm::new(cek.into())
         .encrypt_in_place_detached(&nonce, aad, &mut buffer)
@@ -312,10 +315,11 @@ pub fn a256gcm<T: Serialize>(
     })
 }
 
+/// Encrypt the payload using XChacha20+Poly1305.
 pub fn xchacha20_poly1305<T: Serialize>(
-    plaintext: &T, cek: &[u8; PUBLIC_KEY_LENGTH], aad: &[u8],
+    plaintext: T, cek: &[u8; PUBLIC_KEY_LENGTH], aad: &[u8],
 ) -> Result<Encrypted> {
-    let mut buffer = serde_json::to_vec(plaintext)?;
+    let mut buffer = serde_json::to_vec(&plaintext)?;
     let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
     let tag = XChaCha20Poly1305::new(cek.into())
         .encrypt_in_place_detached(&nonce, aad, &mut buffer)
