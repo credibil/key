@@ -39,7 +39,7 @@ impl Default for JweBuilder<NoPayload> {
 pub struct NoPayload;
 #[doc(hidden)]
 /// Typestate generic for a JWE builder with a payload.
-pub struct WithPayload<'a, T: Serialize + Send>(&'a T);
+pub struct Payload<'a, T: Serialize + Send>(&'a T);
 
 /// Recipient information required when generating a JWE.
 pub struct Recipient {
@@ -102,17 +102,17 @@ impl<P> JweBuilder<P> {
 
 impl JweBuilder<NoPayload> {
     /// Set the payload to be encrypted.
-    pub fn payload<T: Serialize + Send>(self, payload: &T) -> JweBuilder<WithPayload<'_, T>> {
+    pub fn payload<T: Serialize + Send>(self, payload: &T) -> JweBuilder<Payload<'_, T>> {
         JweBuilder {
             content_algorithm: self.content_algorithm,
             key_algorithm: self.key_algorithm,
-            payload: WithPayload(payload),
+            payload: Payload(payload),
             recipients: self.recipients,
         }
     }
 }
 
-impl<T: Serialize + Send> JweBuilder<WithPayload<'_, T>> {
+impl<T: Serialize + Send> JweBuilder<Payload<'_, T>> {
     /// Build the JWE.
     ///
     /// # Errors

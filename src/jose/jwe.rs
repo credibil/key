@@ -59,7 +59,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub use self::encrypt::{JweBuilder, NoPayload, WithPayload};
+pub use self::encrypt::{JweBuilder, NoPayload, Payload};
 pub use self::key::{PublicKey, SecretKey, SharedSecret};
 use crate::jose::jwk::PublicKeyJwk;
 use crate::Receiver;
@@ -470,15 +470,21 @@ mod test {
         assert_eq!(plaintext, decrypted);
     }
 
-    // // round trip: encrypt and then decrypt
+    // // two-step encryption -> get intermediate ciphertext work product
     // #[tokio::test]
     // async fn two_step() {
     //     let key_store = X25519::new();
     //     let plaintext = "The true sign of intelligence is not knowledge but imagination.";
     //     let public_key = PublicKey::from(key_store.public_key);
 
-    //     let mut jwe = JweBuilder::new().payload(&plaintext).encrypt().expect("should encrypt");
-    //     jwe.add_recipient("did:example:alice#key-id", public_key).build().expect("should build");
+    //     let mut builder =
+    //         JweBuilder::new().key_algorithm(KeyAlgorithm::EcdhEsA256Kw).payload(&plaintext);
+    //     let jwe = builder.encrypt().expect("should encrypt");
+
+    //     let jwe = builder
+    //         .add_recipient("did:example:alice#key-id", public_key)
+    //         .build()
+    //         .expect("should build");
 
     //     let decrypted: String = decrypt(&jwe, &key_store).await.expect("should decrypt");
     //     assert_eq!(plaintext, decrypted);
