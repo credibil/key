@@ -299,6 +299,9 @@ pub struct Encrypted {
 }
 
 /// Encrypt the payload using A256GCM.
+///
+/// # Errors
+/// LATER: add error docs
 pub fn a256gcm<T: Serialize>(
     plaintext: T, cek: &[u8; PUBLIC_KEY_LENGTH], aad: &[u8],
 ) -> Result<Encrypted> {
@@ -316,6 +319,9 @@ pub fn a256gcm<T: Serialize>(
 }
 
 /// Encrypt the payload using XChacha20+Poly1305.
+///
+/// # Errors
+/// LATER: add error docs
 pub fn xchacha20_poly1305<T: Serialize>(
     plaintext: T, cek: &[u8; PUBLIC_KEY_LENGTH], aad: &[u8],
 ) -> Result<Encrypted> {
@@ -334,6 +340,9 @@ pub fn xchacha20_poly1305<T: Serialize>(
 
 /// Encrypt the content encryption key (CEK)for the specified recipient using
 /// ECDH-ES+A256KW.
+///
+/// # Errors
+/// LATER: add error docs
 pub fn ecdh_a256kw(cek: &[u8; PUBLIC_KEY_LENGTH], recipient: &Recipient) -> Result<KeyEncryption> {
     // derive shared secret
     let ephemeral_secret = EphemeralSecret::random_from_rng(rand::thread_rng());
@@ -363,6 +372,9 @@ pub fn ecdh_a256kw(cek: &[u8; PUBLIC_KEY_LENGTH], recipient: &Recipient) -> Resu
 
 /// Encrypt the content encryption key (CEK)for the specified recipient using
 /// ECIES-ES256K.
+///
+/// # Errors
+/// LATER: add error docs
 pub fn ecies_es256k(cek: &[u8; PUBLIC_KEY_LENGTH], recipient: &Recipient) -> Result<KeyEncryption> {
     // ----------------------------------------------------------------
     // Using the `ecies` library's top-level `encrypt`.
