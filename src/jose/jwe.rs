@@ -73,7 +73,7 @@ use crate::Receiver;
 /// # Errors
 ///
 /// Returns an error if the plaintext cannot be encrypted.
-pub fn encrypt<T: Serialize + Send>(plaintext: &T, recipient_public: PublicKey) -> Result<Jwe> {
+pub fn encrypt<T: Serialize + Send>(plaintext: T, recipient_public: PublicKey) -> Result<Jwe> {
     JweBuilder::new()
         .content_algorithm(ContentAlgorithm::A256Gcm)
         .key_algorithm(KeyAlgorithm::EcdhEs)

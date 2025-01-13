@@ -26,13 +26,13 @@ use crate::{Algorithm, Curve, Signer};
 ///
 /// # Errors
 /// TODO: document errors
-pub async fn encode<T>(typ: Type, payload: &T, signer: &impl Signer) -> Result<String>
+pub async fn encode<T>(payload: &T, signer: &impl Signer) -> Result<String>
 where
     T: Serialize + Send + Sync,
 {
     tracing::debug!("encode");
 
-    let jws = Jws::new(typ, payload, signer).await?;
+    let jws = JwsBuilder::new().payload(payload).add_signer(signer).build().await?;
     let Some(signature) = jws.signatures.first() else {
         bail!("no signature found");
     };
@@ -111,34 +111,34 @@ pub struct Jws {
 }
 
 impl Jws {
-    /// Create a signed JWS JSON object for the given payload.
-    ///
-    /// # Errors
-    /// TODO: document errors
-    pub async fn new<T>(typ: Type, payload: &T, signer: &impl Signer) -> Result<Self>
-    where
-        T: Serialize + Send + Sync,
-    {
-        let verification_method = signer.verification_method().await?;
-        let protected = Protected {
-            alg: signer.algorithm(),
-            typ,
-            key: Key::KeyId(verification_method),
-            ..Protected::default()
-        };
+    // /// Create a signed JWS JSON object for the given payload.
+    // ///
+    // /// # Errors
+    // /// TODO: document errors
+    // pub async fn new<T>(typ: Type, payload: &T, signer: &impl Signer) -> Result<Self>
+    // where
+    //     T: Serialize + Send + Sync,
+    // {
+    //     let verification_method = signer.verification_method().await?;
+    //     let protected = Protected {
+    //         alg: signer.algorithm(),
+    //         typ,
+    //         key: Key::KeyId(verification_method),
+    //         ..Protected::default()
+    //     };
 
-        let header = Base64UrlUnpadded::encode_string(&serde_json::to_vec(&protected)?);
-        let payload = Base64UrlUnpadded::encode_string(&serde_json::to_vec(payload)?);
-        let sig = signer.try_sign(format!("{header}.{payload}").as_bytes()).await?;
+    //     let header = Base64UrlUnpadded::encode_string(&serde_json::to_vec(&protected)?);
+    //     let payload = Base64UrlUnpadded::encode_string(&serde_json::to_vec(payload)?);
+    //     let sig = signer.try_sign(format!("{header}.{payload}").as_bytes()).await?;
 
-        Ok(Self {
-            payload,
-            signatures: vec![Signature {
-                protected,
-                signature: Base64UrlUnpadded::encode_string(&sig),
-            }],
-        })
-    }
+    //     Ok(Self {
+    //         payload,
+    //         signatures: vec![Signature {
+    //             protected,
+    //             signature: Base64UrlUnpadded::encode_string(&sig),
+    //         }],
+    //     })
+    // }
 
     /// Verify JWS signatures.
     ///
@@ -336,48 +336,88 @@ impl Default for Key {
 
 /// Options to use when creating a permission grant.
 #[derive(Clone, Debug, Default)]
-pub struct JwsBuilder<T>
-where
-    T: Serialize + Default + Send + Sync,
-{
+pub struct JwsBuilder<P, S> {
     jwt_type: Type,
-    payload: T,
+    payload: P,
+    signers: S,
 }
 
+#[doc(hidden)]
+/// Typestate generic for a JWS builder with no payload.
+pub struct NoPayload;
+#[doc(hidden)]
+/// Typestate generic for a JWS builder with a payload.
+pub struct Payload<T: Serialize + Send>(T);
+
+#[doc(hidden)]
+/// Typestate generic for a JWS builder with no signer.
+pub struct NoSigners;
+#[doc(hidden)]
+/// Typestate generic for a JWS builder with a signer.
+pub struct Signers<'a, S: Signer>(pub Vec<&'a S>);
+
 /// Builder for creating a permission grant.
-impl<T> JwsBuilder<T>
-where
-    T: Serialize + Default + Send + Sync,
-{
+impl JwsBuilder<NoPayload, NoSigners> {
     /// Returns a new [`SubscribeBuilder`]
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         // set defaults
         Self {
             jwt_type: Type::Jwt,
-            ..Self::default()
+            payload: NoPayload,
+            signers: NoSigners,
         }
     }
 
-    /// Specify JWT header `typ`.
+    /// Set the payload to be signed.
+    #[must_use]
+    pub const fn payload<T: Serialize + Send>(
+        self, payload: T,
+    ) -> JwsBuilder<Payload<T>, NoSigners> {
+        JwsBuilder {
+            jwt_type: self.jwt_type,
+            payload: Payload(payload),
+            signers: NoSigners,
+        }
+    }
+}
+
+impl<P, S> JwsBuilder<P, S> {
+    /// Specify JWT `typ` header.
     #[must_use]
     pub const fn jwt_type(mut self, jwt_type: Type) -> Self {
         self.jwt_type = jwt_type;
         self
     }
 
-    /// Specify the payload to be signed.
+    /// Logically (from user POV), sign the record.
+    ///
+    /// At this point, the builder simply captures the signer for use in the final
+    /// build step. Can only be done if the content hasn't been signed yet.
     #[must_use]
-    pub fn payload(mut self, payload: T) -> Self {
-        self.payload = payload;
-        self
+    pub fn add_signer(self, signer: &impl Signer) -> JwsBuilder<P, Signers<impl Signer>> {
+        JwsBuilder {
+            jwt_type: self.jwt_type,
+            payload: self.payload,
+            signers: Signers(vec![signer]),
+        }
     }
+}
 
+impl<T, S> JwsBuilder<Payload<T>, Signers<'_, S>>
+where
+    T: Serialize + Send,
+    S: Signer,
+{
     /// Generate the JWS.
     ///
     /// # Errors
     /// TODO: Add errors
-    pub async fn build(self, signer: &impl Signer) -> Result<Jws> {
+    pub async fn build(self) -> Result<Jws> {
+        let Some(signer) = self.signers.0.first() else {
+            bail!("no signers found");
+        };
+
         let verification_method = signer.verification_method().await?;
         let protected = Protected {
             alg: signer.algorithm(),
@@ -387,7 +427,7 @@ where
         };
 
         let header = Base64UrlUnpadded::encode_string(&serde_json::to_vec(&protected)?);
-        let payload = Base64UrlUnpadded::encode_string(&serde_json::to_vec(&self.payload)?);
+        let payload = Base64UrlUnpadded::encode_string(&serde_json::to_vec(&self.payload.0)?);
         let sig = signer.try_sign(format!("{header}.{payload}").as_bytes()).await?;
 
         Ok(Jws {
