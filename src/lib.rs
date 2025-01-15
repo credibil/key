@@ -19,34 +19,6 @@ pub use crate::jose::jwk::PublicKeyJwk;
 pub use crate::jose::jws::Jws;
 pub use crate::jose::jwt::Jwt;
 
-/// The `SecOps` trait is used to provide methods needed for signing,
-/// encrypting, verifying, and decrypting data.
-///
-/// Implementers of this trait are expected to provide the necessary
-/// cryptographic functionality to support Verifiable Credential issuance and
-/// Verifiable Presentation submissions.
-pub trait KeyOps: Send + Sync {
-    /// Signer provides digital signing function.
-    ///
-    /// The `controller` parameter uniquely identifies the controller of the
-    /// private key used in the signing operation.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the Signer cannot be created.
-    fn signer(&self, controller: &str) -> Result<impl Signer>;
-
-    /// Receiver provides data encryption/decryption functionality.
-    ///
-    /// The `controller` parameter uniquely identifies the controller of the
-    /// private key used in the signing operation.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the Receiver cannot be created.
-    fn receiver(&self, controller: &str) -> Result<impl Receiver>;
-}
-
 /// Signer is used by implementers to provide signing functionality for
 /// Verifiable Credential issuance and Verifiable Presentation submissions.
 pub trait Signer: Send + Sync {
@@ -76,11 +48,12 @@ pub trait Signer: Send + Sync {
     fn verification_method(&self) -> impl Future<Output = Result<String>> + Send;
 }
 
-/// Receiver encapsulates functionality implementers are required to implement
-/// in order for receivers (recipients) to decrypt an encrypted message.
+/// A Receiver (Recipient) is required to decrypt an encrypted message.
 pub trait Receiver: Send + Sync {
-    /// Receiver's public key identifier. For example,
-    /// `did:example:alice#key-id`.
+    /// The Receiver's public key identifier used to identify the recipient in
+    /// a multi-recipient JWE
+    ///
+    /// For example, `did:example:alice#key-id`.
     fn key_id(&self) -> String;
 
     /// Derive the receiver's shared secret used for decrypting (or direct use)
