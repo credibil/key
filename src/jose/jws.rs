@@ -7,7 +7,6 @@
 //! [RFC7515]: https://www.rfc-editor.org/rfc/rfc7515
 //! [RFC7518]: https://www.rfc-editor.org/rfc/rfc7518
 
-use std::fmt::Display;
 use std::future::Future;
 use std::str::FromStr;
 
@@ -76,29 +75,6 @@ where
     })
 }
 
-/// The JWS `typ` header parameter.
-#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
-pub enum Type {
-    /// General purpose JWT type.
-    #[default]
-    #[serde(rename = "jwt")]
-    Jwt,
-
-    /// JWT `typ` for Wallet's Proof of possession of key material.
-    #[serde(rename = "openid4vci-proof+jwt")]
-    Openid4VciProofJwt,
-
-    /// JWT `typ` for Authorization Request Object.
-    #[serde(rename = "oauth-authz-req+jwt")]
-    OauthAuthzReqJwt,
-}
-
-impl Display for Type {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{self:?}")
-    }
-}
-
 /// JWS definition.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct Jws {
@@ -111,35 +87,6 @@ pub struct Jws {
 }
 
 impl Jws {
-    // /// Create a signed JWS JSON object for the given payload.
-    // ///
-    // /// # Errors
-    // /// TODO: document errors
-    // pub async fn new<T>(typ: Type, payload: &T, signer: &impl Signer) -> Result<Self>
-    // where
-    //     T: Serialize + Send + Sync,
-    // {
-    //     let verification_method = signer.verification_method().await?;
-    //     let protected = Protected {
-    //         alg: signer.algorithm(),
-    //         typ,
-    //         key: Key::KeyId(verification_method),
-    //         ..Protected::default()
-    //     };
-
-    //     let header = Base64UrlUnpadded::encode_string(&serde_json::to_vec(&protected)?);
-    //     let payload = Base64UrlUnpadded::encode_string(&serde_json::to_vec(payload)?);
-    //     let sig = signer.try_sign(format!("{header}.{payload}").as_bytes()).await?;
-
-    //     Ok(Self {
-    //         payload,
-    //         signatures: vec![Signature {
-    //             protected,
-    //             signature: Base64UrlUnpadded::encode_string(&sig),
-    //         }],
-    //     })
-    // }
-
     /// Verify JWS signatures.
     ///
     /// # Errors
@@ -236,7 +183,7 @@ pub struct Protected {
     /// Used to declare the media type [IANA.MediaTypes] of the JWS.
     ///
     /// [IANA.MediaTypes]: (http://www.iana.org/assignments/media-types)
-    pub typ: Type,
+    pub typ: String,
 
     /// The key material for the public key.
     #[serde(flatten)]
@@ -355,7 +302,7 @@ impl Default for Key {
 /// Options to use when creating a permission grant.
 #[derive(Clone, Debug, Default)]
 pub struct JwsBuilder<P, S> {
-    jwt_type: Type,
+    jwt_type: String,
     payload: P,
     signers: S,
 }
@@ -378,10 +325,10 @@ pub struct Signers<'a, S: Signer>(pub Vec<&'a S>);
 impl JwsBuilder<NoPayload, NoSigners> {
     /// Returns a new [`SubscribeBuilder`]
     #[must_use]
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         // set defaults
         Self {
-            jwt_type: Type::Jwt,
+            jwt_type: "jwt".into(),
             payload: NoPayload,
             signers: NoSigners,
         }
@@ -389,7 +336,7 @@ impl JwsBuilder<NoPayload, NoSigners> {
 
     /// Set the payload to be signed.
     #[must_use]
-    pub const fn payload<T: Serialize + Send>(
+    pub fn payload<T: Serialize + Send>(
         self, payload: T,
     ) -> JwsBuilder<Payload<T>, NoSigners> {
         JwsBuilder {
@@ -403,8 +350,8 @@ impl JwsBuilder<NoPayload, NoSigners> {
 impl<P, S> JwsBuilder<P, S> {
     /// Specify JWT `typ` header.
     #[must_use]
-    pub const fn jwt_type(mut self, jwt_type: Type) -> Self {
-        self.jwt_type = jwt_type;
+    pub fn jwt_type(mut self, jwt_type: impl Into<String>) -> Self {
+        self.jwt_type = jwt_type.into();
         self
     }
 

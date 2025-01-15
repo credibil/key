@@ -44,6 +44,6 @@ pub mod jwt;
 
 pub use jwe::{ContentAlgorithm, Jwe};
 pub use jwk::PublicKeyJwk;
-pub use jws::{Jws, JwsBuilder, Type};
+pub use jws::{Jws, JwsBuilder};
 
 pub use crate::{Curve, KeyType};
