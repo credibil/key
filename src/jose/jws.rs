@@ -165,6 +165,28 @@ impl Jws {
 
         Ok(())
     }
+
+    /// Encode the provided header and claims payload and sign, returning a JWT in
+    /// compact JWS form.
+    ///
+    /// # Errors
+    /// An error is returned if there is no signature on the JWS or if the
+    /// serialization (for encoding) of the header fails.
+    #[must_use]
+    pub fn encode<T>(&self) -> Result<String>
+    where
+        T: Serialize + Send + Sync,
+    {
+        let Some(signature) = self.signatures.first() else {
+            bail!("no signature found");
+        };
+
+        let header = Base64UrlUnpadded::encode_string(&serde_json::to_vec(&signature.protected)?);
+        let payload = &self.payload;
+        let signature = &signature.signature;
+
+        Ok(format!("{header}.{payload}.{signature}"))
+    }
 }
 
 impl FromStr for Jws {
