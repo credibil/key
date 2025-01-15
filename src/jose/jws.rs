@@ -172,10 +172,7 @@ impl Jws {
     /// # Errors
     /// An error is returned if there is no signature on the JWS or if the
     /// serialization (for encoding) of the header fails.
-    pub fn encode<T>(&self) -> Result<String>
-    where
-        T: Serialize + Send + Sync,
-    {
+    pub fn encode(&self) -> Result<String> {
         let Some(signature) = self.signatures.first() else {
             bail!("no signature found");
         };
