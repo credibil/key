@@ -172,7 +172,6 @@ impl Jws {
     /// # Errors
     /// An error is returned if there is no signature on the JWS or if the
     /// serialization (for encoding) of the header fails.
-    #[must_use]
     pub fn encode<T>(&self) -> Result<String>
     where
         T: Serialize + Send + Sync,
