@@ -51,9 +51,7 @@ mod decrypt;
 mod encrypt;
 mod key;
 
-use std::fmt::{self, Display};
-
-use anyhow::Result;
+use anyhow::{bail, Result};
 use base64ct::{Base64UrlUnpadded, Encoding};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -125,11 +123,15 @@ pub struct Jwe {
     pub tag: String,
 }
 
-/// Compact Serialization for single-recipient JWEs.
-impl Display for Jwe {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl Jwe {
+    /// Compact Serialization for single-recipient JWEs.
+    /// 
+    /// # Errors
+    /// Returns an error if the JWE does not contain a single recipient or if
+    /// the JWE cannot be serialized.
+    pub fn encode(&self) -> Result<String> {
         let Recipients::One(recipient) = &self.recipients else {
-            return Err(fmt::Error);
+            bail!("compact serialization requires a single recipient");
         };
 
         // add recipient data to protected header
@@ -139,7 +141,7 @@ impl Display for Jwe {
         };
         protected.inner.alg = Some(recipient.header.alg.clone());
 
-        let bytes = serde_json::to_vec(&protected).map_err(|_| fmt::Error)?;
+        let bytes = serde_json::to_vec(&protected)?;
         let protected = Base64UrlUnpadded::encode_string(&bytes);
 
         let encrypted_key = &recipient.encrypted_key;
@@ -147,7 +149,7 @@ impl Display for Jwe {
         let ciphertext = &self.ciphertext;
         let tag = &self.tag;
 
-        write!(f, "{protected}.{encrypted_key}.{iv}.{ciphertext}.{tag}")
+        Ok(format!("{protected}.{encrypted_key}.{iv}.{ciphertext}.{tag}"))
     }
 }
 
@@ -322,7 +324,7 @@ mod test {
         let jwe = encrypt(&plaintext, public_key).expect("should encrypt");
 
         // serialize/deserialize
-        let compact_jwe = jwe.to_string();
+        let compact_jwe = jwe.encode().expect("should encode jwe");
         let jwe: Jwe = compact_jwe.parse().expect("should parse");
 
         let decrypted: String = decrypt(&jwe, &key_store).await.expect("should decrypt");
