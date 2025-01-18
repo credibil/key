@@ -59,7 +59,7 @@ use serde_json::Value;
 
 pub use self::encrypt::{
     a256gcm, ecdh_a256kw, ecies_es256k, xchacha20_poly1305, Encrypted, JweBuilder, NoPayload,
-    Payload,
+    Payload, Recipient,
 };
 pub use self::key::{PublicKey, SecretKey, SharedSecret};
 use crate::jose::jwk::PublicKeyJwk;
@@ -125,7 +125,7 @@ pub struct Jwe {
 
 impl Jwe {
     /// Compact Serialization for single-recipient JWEs.
-    /// 
+    ///
     /// # Errors
     /// Returns an error if the JWE does not contain a single recipient or if
     /// the JWE cannot be serialized.
