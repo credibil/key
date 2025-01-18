@@ -211,7 +211,7 @@ impl Protected {
     #[must_use]
     pub fn kid(&self) -> Option<&str> {
         match &self.key {
-            Key::KeyId(kid) => Some(kid),
+            Key::KeyId(kid) => Some(kid.as_str()),
             Key::Jwk(_) => None,
         }
     }
@@ -336,9 +336,7 @@ impl JwsBuilder<NoPayload, NoSigners> {
 
     /// Set the payload to be signed.
     #[must_use]
-    pub fn payload<T: Serialize + Send>(
-        self, payload: T,
-    ) -> JwsBuilder<Payload<T>, NoSigners> {
+    pub fn payload<T: Serialize + Send>(self, payload: T) -> JwsBuilder<Payload<T>, NoSigners> {
         JwsBuilder {
             jwt_type: self.jwt_type,
             payload: Payload(payload),
