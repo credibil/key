@@ -76,7 +76,7 @@ where
 }
 
 /// JWS definition.
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Jws {
     /// The stringified CID of the DAG CBOR encoded message `descriptor` property.
     /// An empty string when JWS Unencoded Payload Option used.
@@ -159,7 +159,7 @@ impl FromStr for Jws {
 }
 
 /// An entry of the `signatures` array in a general JWS.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Signature {
     /// The base64 url-encoded JWS protected header when the JWS protected
     /// header is non-empty. Must have `alg` and `kid` properties set.
