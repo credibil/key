@@ -41,7 +41,7 @@ k256 = "0.13.4"
 multibase = "0.9"
 rand = "0.8.5"
 serde = { version = "1.0.217", features = ["derive"] }
-serde_json = { version = "1.0.135", features = ["alloc"] }
+serde_json = { version = "1.0.137", features = ["alloc"] }
 tracing = "0.1.41"
 x25519-dalek = { version = "2.0.1", features = ["static_secrets"] }
 zeroize = "1.8.1"
