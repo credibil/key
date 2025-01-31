@@ -113,8 +113,8 @@ impl Jws {
         Ok(())
     }
 
-    /// Encode the provided header and claims payload and sign, returning a JWT in
-    /// compact JWS form.
+    /// Encode the provided header and claims payload and sign, returning a JWT
+    /// in compact JWS form.
     ///
     /// # Errors
     /// An error is returned if there is no signature on the JWS or if the
@@ -129,6 +129,20 @@ impl Jws {
         let signature = &signature.signature;
 
         Ok(format!("{header}.{payload}.{signature}"))
+    }
+
+    /// Extracts the signer's DID from the `kid` of the first JWS signature.
+    ///
+    /// # Errors
+    /// LATER: Add errors
+    pub fn did(&self) -> Result<String> {
+        let Some(kid) = self.signatures[0].protected.kid() else {
+            return Err(anyhow!("Invalid `kid`"));
+        };
+        let Some(did) = kid.split('#').next() else {
+            return Err(anyhow!("Invalid DID"));
+        };
+        Ok(did.to_owned())
     }
 }
 
