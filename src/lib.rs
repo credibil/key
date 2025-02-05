@@ -1,8 +1,8 @@
 #![feature(let_chains)]
 
-//! # Data Security for Vercre
+//! # Data Security for Credibil
 //!
-//! This crate provides common utilities for the Vercre project and is not
+//! This crate provides common utilities for the Credibil project and is not
 //! intended to be used directly.
 
 pub mod cose;

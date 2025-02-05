@@ -187,7 +187,7 @@ pub struct Signature {
 /// JWS header.
 ///
 /// N.B. The following headers are not included as they are unnecessary
-/// for Vercre: `jku`, `x5u`, `x5t`, `x5t#S256`, `cty`, `crit`.
+/// for Credibil: `jku`, `x5u`, `x5t`, `x5t#S256`, `cty`, `crit`.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Protected {
     /// Digital signature algorithm identifier as per IANA "JSON Web Signature

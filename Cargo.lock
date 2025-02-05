@@ -248,6 +248,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "credibil-infosec"
+version = "0.1.0-alpha.6"
+dependencies = [
+ "aes-gcm",
+ "aes-kw",
+ "anyhow",
+ "base64ct",
+ "chacha20poly1305",
+ "ciborium",
+ "coset",
+ "ecdsa",
+ "ecies",
+ "ed25519-dalek",
+ "hex",
+ "k256",
+ "multibase",
+ "rand",
+ "serde",
+ "serde_json",
+ "sha2 0.10.8",
+ "signature",
+ "tokio",
+ "tracing",
+ "x25519-dalek",
+ "zeroize",
+]
+
+[[package]]
 name = "critical-section"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -991,9 +1019,9 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "syn"
-version = "2.0.96"
+version = "2.0.98"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d5d0adab1ae378d7f53bdebc67a39f1f151407ef230f0ce2883572f5d8985c80"
+checksum = "36147f1a48ae0ec2b5b3bc5b537d267457555a10dc06f3dbc8cb11ba3006d3b1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1073,34 +1101,6 @@ checksum = "fc1de2c688dc15305988b563c3854064043356019f97a4b46276fe734c4f07ea"
 dependencies = [
  "crypto-common",
  "subtle",
-]
-
-[[package]]
-name = "vercre-infosec"
-version = "0.1.0-alpha.6"
-dependencies = [
- "aes-gcm",
- "aes-kw",
- "anyhow",
- "base64ct",
- "chacha20poly1305",
- "ciborium",
- "coset",
- "ecdsa",
- "ecies",
- "ed25519-dalek",
- "hex",
- "k256",
- "multibase",
- "rand",
- "serde",
- "serde_json",
- "sha2 0.10.8",
- "signature",
- "tokio",
- "tracing",
- "x25519-dalek",
- "zeroize",
 ]
 
 [[package]]
