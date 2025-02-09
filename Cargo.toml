@@ -6,13 +6,13 @@ readme = "README.md"
 
 authors = ["Credibil"]
 categories = ["cose", "jose", "cryptography", "security"]
-edition = "2021"
+edition = "2024"
 exclude = [".*", "snapshots/"]
 homepage = "https://credibil.io"
 keywords = ["credentials", "decentralized", "identity", "openid", "verifiable"]
 repository = "https://github.com/credibil/infosec"
-rust-version = "1.80"
-version = "0.1.0-alpha.6"
+rust-version = "1.85"
+version = "0.1.0"
 
 [lib]
 # crate-type = ["cdylib", "rlib"]
