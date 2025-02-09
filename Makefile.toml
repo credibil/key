@@ -89,12 +89,12 @@ command = "cargo"
 args = ["publish", "--allow-dirty", "--dry-run"]
 
 # args = release level: one of `release`, `major`, `minor`, `patch`, `alpha`, `beta`, `rc`
-[tasks.release]
+[tasks.prerel]
 command = "cargo"
 args = ["release", "${@}"]
 install_crate = "cargo-release"
 
-[tasks.publish]
+[tasks.release]
 command = "cargo"
 args = ["release", "${@}", "--execute"]
 install_crate = "cargo-release"
