@@ -1,9 +1,5 @@
-# Information Security for Credibil
+# Credibil Information Security
 
-Shared logic for higher order Credibil crates.
+Shared information security functionality for higher-order Credibil crates.
 
-This crate is not intended to be used directly. See
-
-* [credibil-issuer](https://crates.io/crates/credibil-issuer)
-* [credibil-verifier](https://crates.io/crates/credibil-verifier)
-* [credibil-holder](https://crates.io/crates/credibil-holder)
+> [!CAUTION] This crate is not intended for direct use.

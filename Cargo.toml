@@ -1,11 +1,10 @@
 [package]
 name = "credibil-infosec"
-description = "Information security utilities"
+description = "Credibil information security utilities"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
-
 authors = ["Credibil"]
-categories = ["cose", "jose", "cryptography", "security"]
+categories = ["cryptography"]
 edition = "2024"
 exclude = [".*", "snapshots/"]
 homepage = "https://credibil.io"
