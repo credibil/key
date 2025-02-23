@@ -1,5 +1,3 @@
-#![feature(let_chains)]
-
 //! # Data Security for Credibil
 //!
 //! This crate provides common utilities for the Credibil project and is not
