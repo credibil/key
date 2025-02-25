@@ -28,7 +28,7 @@ nursery = "warn"
 [dependencies]
 aes-gcm = "0.10.3"
 aes-kw = { version = "0.2.1", features = ["alloc"] }
-anyhow = "1.0.95"
+anyhow = "1.0.96"
 base64ct = { version = "1.6.0", features = ["std"] }
 chacha20poly1305 = "0.10.1"
 ciborium = "0.2.2"
@@ -37,10 +37,10 @@ ecdsa = "0.16.9"
 ecies = { version = "0.2.7", default-features = false, features = ["pure", "std"] }
 ed25519-dalek = { version = "2.1.1", features = ["rand_core"] }
 k256 = "0.13.4"
-multibase = "0.9"
+multibase = "0.9.1"
 rand = "0.8.5"
-serde = { version = "1.0.217", features = ["derive"] }
-serde_json = { version = "1.0.138", features = ["alloc"] }
+serde = { version = "1.0.218", features = ["derive"] }
+serde_json = { version = "1.0.139", features = ["alloc"] }
 tracing = "0.1.41"
 x25519-dalek = { version = "2.0.1", features = ["static_secrets"] }
 zeroize = "1.8.1"
