@@ -16,6 +16,13 @@ use serde::{Deserialize, Serialize};
 ///
 /// Enveloping proofs are implemented using JOSE and COSE, while embedded proofs
 /// are implemented using the `Proof` object described here.
+/// 
+/// The `proof_value` field is required and its value is computed using a
+/// cryptosuite algorithm as specified in
+/// [Data Integrity EdDSA Cryptosuites v1.0](https://www.w3.org/TR/vc-di-eddsa).
+/// Those algorithms describe the process whereby a configuration or options
+/// object is used. This is the same structure as the `proof` object without the
+/// `proof_value` field. Hence the field being set as optional on this struct.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", default)]
 #[allow(clippy::struct_field_names)]
@@ -73,7 +80,11 @@ pub struct Proof {
     /// Contains the data needed to verify the proof using the
     /// verificationMethod specified. MUST be a MULTIBASE-encoded binary
     /// value.
-    pub proof_value: String,
+    /// 
+    /// This field is required for on a proof object and should be omitted on
+    /// a proof configuration object.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub proof_value: Option<String>,
 
     /// Each value identifies another data integrity proof that MUST verify
     /// before the current proof is processed.
