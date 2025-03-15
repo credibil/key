@@ -10,7 +10,7 @@
 use std::future::Future;
 use std::str::FromStr;
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use base64ct::{Base64UrlUnpadded, Encoding};
 use ecdsa::signature::Verifier as _;
 use serde::de::DeserializeOwned;
@@ -49,30 +49,13 @@ where
 ///
 /// # Errors
 /// TODO: document errors
-pub async fn decode<F, Fut, T>(compact_jws: &str, resolver: F) -> Result<Jwt<T>>
+pub async fn decode<Fut, T>(compact_jws: &str, resolver: impl Fn(String) -> Fut) -> Result<Jwt<T>>
 where
     T: DeserializeOwned + Send,
-    F: Fn(String) -> Fut + Send,
     Fut: Future<Output = Result<PublicKeyJwk>> + Send,
 {
     tracing::debug!("decode");
-
-    let jws: Jws = compact_jws.parse()?;
-    jws.verify(resolver).await?;
-
-    let claims = Base64UrlUnpadded::decode_vec(&jws.payload)
-        .map_err(|e| anyhow!("issue decoding claims: {e}"))?;
-    let claims =
-        serde_json::from_slice(&claims).map_err(|e| anyhow!("issue deserializing claims:{e}"))?;
-
-    let Some(signature) = jws.signatures.first() else {
-        bail!("no signature found");
-    };
-
-    Ok(Jwt {
-        header: signature.protected.clone(),
-        claims,
-    })
+    compact_jws.parse::<Jws>()?.verify(resolver).await
 }
 
 /// JWS definition.
@@ -87,13 +70,13 @@ pub struct Jws {
 }
 
 impl Jws {
-    /// Verify JWS signatures.
+    /// Verify JWS signatures and return the JWT payload if successful.
     ///
     /// # Errors
     /// TODO: document errors
-    pub async fn verify<F, Fut>(&self, resolver: F) -> Result<()>
+    pub async fn verify<Fut, T>(&self, resolver: impl Fn(String) -> Fut) -> Result<Jwt<T>>
     where
-        F: Fn(String) -> Fut + Send,
+        T: DeserializeOwned + Send,
         Fut: Future<Output = Result<PublicKeyJwk>> + Send,
     {
         for signature in &self.signatures {
@@ -106,11 +89,23 @@ impl Jws {
             let header = Base64UrlUnpadded::encode_string(&serde_json::to_vec(&header)?);
             let sig = Base64UrlUnpadded::decode_vec(&signature.signature)?;
 
-            let public_jwk = resolver(kid.to_owned()).await?;
+            let public_jwk = resolver(kid.to_string()).await?;
             public_jwk.verify(&format!("{header}.{}", self.payload), &sig)?;
         }
 
-        Ok(())
+        let claims = Base64UrlUnpadded::decode_vec(&self.payload)
+            .map_err(|e| anyhow!("issue decoding claims: {e}"))?;
+        let claims = serde_json::from_slice(&claims)
+            .map_err(|e| anyhow!("issue deserializing claims:{e}"))?;
+
+        let Some(signature) = self.signatures.first() else {
+            bail!("no signature found");
+        };
+
+        Ok(Jwt {
+            header: signature.protected.clone(),
+            claims,
+        })
     }
 
     /// Encode the provided header and claims payload and sign, returning a JWT
