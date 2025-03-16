@@ -73,6 +73,7 @@ pub struct Jws {
 
 impl Jws {
     /// Returns a new JWS builder.
+    #[must_use]
     pub fn builder() -> JwsBuilder<NoPayload, NoSigners> {
         JwsBuilder::new()
     }
