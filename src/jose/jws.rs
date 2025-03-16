@@ -49,13 +49,15 @@ where
 ///
 /// # Errors
 /// TODO: document errors
-pub async fn decode<Fut, T>(compact_jws: &str, resolver: impl Fn(String) -> Fut) -> Result<Jwt<T>>
+pub async fn decode<Fut, T>(
+    compact_jws: &str, jwk_resolver: impl Fn(String) -> Fut,
+) -> Result<Jwt<T>>
 where
     T: DeserializeOwned + Send,
     Fut: Future<Output = Result<PublicKeyJwk>> + Send,
 {
     tracing::debug!("decode");
-    compact_jws.parse::<Jws>()?.verify(resolver).await
+    compact_jws.parse::<Jws>()?.verify(jwk_resolver).await
 }
 
 /// JWS definition.
@@ -70,11 +72,16 @@ pub struct Jws {
 }
 
 impl Jws {
+    /// Returns a new JWS builder.
+    pub fn builder() -> JwsBuilder<NoPayload, NoSigners> {
+        JwsBuilder::new()
+    }
+
     /// Verify JWS signatures and return the JWT payload if successful.
     ///
     /// # Errors
     /// TODO: document errors
-    pub async fn verify<Fut, T>(&self, resolver: impl Fn(String) -> Fut) -> Result<Jwt<T>>
+    pub async fn verify<Fut, T>(&self, jwk_resolver: impl Fn(String) -> Fut) -> Result<Jwt<T>>
     where
         T: DeserializeOwned + Send,
         Fut: Future<Output = Result<PublicKeyJwk>> + Send,
@@ -89,7 +96,7 @@ impl Jws {
             let header = Base64UrlUnpadded::encode_string(&serde_json::to_vec(&header)?);
             let sig = Base64UrlUnpadded::decode_vec(&signature.signature)?;
 
-            let public_jwk = resolver(kid.to_string()).await?;
+            let public_jwk = jwk_resolver(kid.to_string()).await?;
             public_jwk.verify(&format!("{header}.{}", self.payload), &sig)?;
         }
 
@@ -119,25 +126,37 @@ impl Jws {
             bail!("no signature found");
         };
 
-        let header = Base64UrlUnpadded::encode_string(&serde_json::to_vec(&signature.protected)?);
+        let header_bytes = serde_json::to_vec(&signature.protected)?;
+
+        let header = Base64UrlUnpadded::encode_string(&header_bytes);
         let payload = &self.payload;
         let signature = &signature.signature;
 
         Ok(format!("{header}.{payload}.{signature}"))
     }
 
-    /// Extracts the signer's DID from the `kid` of the first JWS signature.
-    ///
-    /// # Errors
-    /// LATER: Add errors
-    pub fn did(&self) -> Result<String> {
-        let Some(kid) = self.signatures[0].protected.kid() else {
-            return Err(anyhow!("Invalid `kid`"));
-        };
-        let Some(did) = kid.split('#').next() else {
-            return Err(anyhow!("Invalid DID"));
-        };
-        Ok(did.to_owned())
+    // /// Extracts the signer's DID from the `kid` of the first JWS signature.
+    // ///
+    // /// # Errors
+    // /// LATER: Add errors
+    // pub fn did(&self) -> Result<String> {
+    //     let Some(kid) = self.signatures[0].protected.kid() else {
+    //         return Err(anyhow!("Invalid `kid`"));
+    //     };
+    //     let Some(did) = kid.split('#').next() else {
+    //         return Err(anyhow!("Invalid DID"));
+    //     };
+    //     Ok(did.to_owned())
+    // }
+}
+
+use std::fmt;
+use std::fmt::Display;
+use std::fmt::Formatter;
+
+impl Display for Jws {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.encode().unwrap())
     }
 }
 
@@ -311,7 +330,7 @@ impl Default for Key {
 /// Options to use when creating a permission grant.
 #[derive(Clone, Debug, Default)]
 pub struct JwsBuilder<P, S> {
-    jwt_type: String,
+    typ: String,
     payload: P,
     signers: S,
 }
@@ -337,7 +356,7 @@ impl JwsBuilder<NoPayload, NoSigners> {
     pub fn new() -> Self {
         // set defaults
         Self {
-            jwt_type: "jwt".into(),
+            typ: "jwt".into(),
             payload: NoPayload,
             signers: NoSigners,
         }
@@ -347,7 +366,7 @@ impl JwsBuilder<NoPayload, NoSigners> {
     #[must_use]
     pub fn payload<T: Serialize + Send>(self, payload: T) -> JwsBuilder<Payload<T>, NoSigners> {
         JwsBuilder {
-            jwt_type: self.jwt_type,
+            typ: self.typ,
             payload: Payload(payload),
             signers: NoSigners,
         }
@@ -357,8 +376,8 @@ impl JwsBuilder<NoPayload, NoSigners> {
 impl<P, S> JwsBuilder<P, S> {
     /// Specify JWT `typ` header.
     #[must_use]
-    pub fn jwt_type(mut self, jwt_type: impl Into<String>) -> Self {
-        self.jwt_type = jwt_type.into();
+    pub fn typ(mut self, typ: impl Into<String>) -> Self {
+        self.typ = typ.into();
         self
     }
 
@@ -369,7 +388,7 @@ impl<P, S> JwsBuilder<P, S> {
     #[must_use]
     pub fn add_signer(self, signer: &impl Signer) -> JwsBuilder<P, Signers<impl Signer>> {
         JwsBuilder {
-            jwt_type: self.jwt_type,
+            typ: self.typ,
             payload: self.payload,
             signers: Signers(vec![signer]),
         }
@@ -393,7 +412,7 @@ where
         let verification_method = signer.verification_method().await?;
         let protected = Protected {
             alg: signer.algorithm(),
-            typ: self.jwt_type,
+            typ: self.typ,
             key: Key::KeyId(verification_method),
             ..Protected::default()
         };
