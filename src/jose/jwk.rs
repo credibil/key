@@ -72,13 +72,11 @@ pub struct PublicKeyJwk {
 }
 
 impl PublicKeyJwk {
-    /// Convert a multi-base encoded key into a JWK.
-    ///
+    /// Convert a key as bytes into a JWK.
+    /// 
     /// # Errors
-    /// LATER: document errors.
-    pub fn from_multibase(key: &str) -> Result<Self> {
-        let (_, key_bytes) =
-            multibase::decode(key).map_err(|e| anyhow!("issue decoding key: {e}"))?;
+    /// Will return an error if the key is not a valid Ed25519 key.
+    pub fn from_bytes(key_bytes: &[u8]) -> Result<Self> {
         if key_bytes.len() - 2 != 32 {
             return Err(anyhow!("key is not 32 bytes long"));
         }
@@ -92,6 +90,16 @@ impl PublicKeyJwk {
             x: Base64UrlUnpadded::encode_string(&key_bytes[2..]),
             ..Self::default()
         })
+    }
+
+    /// Convert a multi-base encoded key into a JWK.
+    ///
+    /// # Errors
+    /// Will return an error if the key is not a valid multi-base encoded key.
+    pub fn from_multibase(key: &str) -> Result<Self> {
+        let (_, key_bytes) =
+            multibase::decode(key).map_err(|e| anyhow!("issue decoding key: {e}"))?;
+        Self::from_bytes(&key_bytes)
     }
 
     /// Convert a JWK into a multi-base encoded key.
