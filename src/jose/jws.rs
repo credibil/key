@@ -11,6 +11,7 @@ use std::future::Future;
 use std::str::FromStr;
 
 use anyhow::{Result, anyhow, bail};
+use anyhow::{Result, anyhow, bail};
 use base64ct::{Base64UrlUnpadded, Encoding};
 use ecdsa::signature::Verifier as _;
 use serde::de::DeserializeOwned;
@@ -52,11 +53,15 @@ where
 pub async fn decode<Fut, T>(
     compact_jws: &str, jwk_resolver: impl Fn(String) -> Fut,
 ) -> Result<Jwt<T>>
+pub async fn decode<Fut, T>(
+    compact_jws: &str, jwk_resolver: impl Fn(String) -> Fut,
+) -> Result<Jwt<T>>
 where
     T: DeserializeOwned + Send,
     Fut: Future<Output = Result<PublicKeyJwk>> + Send,
 {
     tracing::debug!("decode");
+    compact_jws.parse::<Jws>()?.verify(jwk_resolver).await
     compact_jws.parse::<Jws>()?.verify(jwk_resolver).await
 }
 
@@ -83,7 +88,9 @@ impl Jws {
     /// # Errors
     /// TODO: document errors
     pub async fn verify<Fut, T>(&self, jwk_resolver: impl Fn(String) -> Fut) -> Result<Jwt<T>>
+    pub async fn verify<Fut, T>(&self, jwk_resolver: impl Fn(String) -> Fut) -> Result<Jwt<T>>
     where
+        T: DeserializeOwned + Send,
         T: DeserializeOwned + Send,
         Fut: Future<Output = Result<PublicKeyJwk>> + Send,
     {
@@ -98,9 +105,23 @@ impl Jws {
             let sig = Base64UrlUnpadded::decode_vec(&signature.signature)?;
 
             let public_jwk = jwk_resolver(kid.to_string()).await?;
+            let public_jwk = jwk_resolver(kid.to_string()).await?;
             public_jwk.verify(&format!("{header}.{}", self.payload), &sig)?;
         }
 
+        let claims = Base64UrlUnpadded::decode_vec(&self.payload)
+            .map_err(|e| anyhow!("issue decoding claims: {e}"))?;
+        let claims = serde_json::from_slice(&claims)
+            .map_err(|e| anyhow!("issue deserializing claims:{e}"))?;
+
+        let Some(signature) = self.signatures.first() else {
+            bail!("no signature found");
+        };
+
+        Ok(Jwt {
+            header: signature.protected.clone(),
+            claims,
+        })
         let claims = Base64UrlUnpadded::decode_vec(&self.payload)
             .map_err(|e| anyhow!("issue decoding claims: {e}"))?;
         let claims = serde_json::from_slice(&claims)
@@ -130,12 +151,37 @@ impl Jws {
         let header_bytes = serde_json::to_vec(&signature.protected)?;
 
         let header = Base64UrlUnpadded::encode_string(&header_bytes);
+        let header_bytes = serde_json::to_vec(&signature.protected)?;
+
+        let header = Base64UrlUnpadded::encode_string(&header_bytes);
         let payload = &self.payload;
         let signature = &signature.signature;
 
         Ok(format!("{header}.{payload}.{signature}"))
     }
 
+    // /// Extracts the signer's DID from the `kid` of the first JWS signature.
+    // ///
+    // /// # Errors
+    // /// LATER: Add errors
+    // pub fn did(&self) -> Result<String> {
+    //     let Some(kid) = self.signatures[0].protected.kid() else {
+    //         return Err(anyhow!("Invalid `kid`"));
+    //     };
+    //     let Some(did) = kid.split('#').next() else {
+    //         return Err(anyhow!("Invalid DID"));
+    //     };
+    //     Ok(did.to_owned())
+    // }
+}
+
+use std::fmt;
+use std::fmt::Display;
+use std::fmt::Formatter;
+
+impl Display for Jws {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.encode().unwrap())
     // /// Extracts the signer's DID from the `kid` of the first JWS signature.
     // ///
     // /// # Errors
