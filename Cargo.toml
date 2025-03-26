@@ -11,7 +11,7 @@ homepage = "https://credibil.io"
 keywords = ["credentials", "decentralized", "identity", "openid", "verifiable"]
 repository = "https://github.com/credibil/infosec"
 rust-version = "1.85"
-version = "0.1.1"
+version = "0.1.2"
 
 [lib]
 # crate-type = ["cdylib", "rlib"]
