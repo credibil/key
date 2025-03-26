@@ -4,7 +4,7 @@ use aes_gcm::aead::KeyInit;
 use aes_gcm::{AeadCore, AeadInPlace, Aes256Gcm};
 // use aes_gcm::aes::cipher::consts::U12;
 use aes_kw::Kek;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use base64ct::{Base64UrlUnpadded, Encoding};
 use chacha20poly1305::XChaCha20Poly1305;
 // use ecies::consts::{AEAD_TAG_LENGTH, NONCE_LENGTH, UNCOMPRESSED_PUBLIC_KEY_SIZE};
@@ -110,7 +110,7 @@ impl<P> JweBuilder<P> {
     }
 }
 
-impl<T: Serialize + Send> JweBuilder<Payload< T>> {
+impl<T: Serialize + Send> JweBuilder<Payload<T>> {
     /// Build the JWE.
     ///
     /// # Errors
@@ -397,7 +397,8 @@ pub fn ecies_es256k(cek: &[u8; PUBLIC_KEY_LENGTH], recipient: &Recipient) -> Res
     // derive shared secret
     let (ephemeral_secret, ephemeral_public) = ecies::utils::generate_keypair();
     let shared_secret =
-        ecies::utils::encapsulate(&ephemeral_secret, &recipient.public_key.try_into()?)?;
+        ecies::utils::encapsulate(&ephemeral_secret, &recipient.public_key.try_into()?)
+            .map_err(|e| anyhow!("issue encapsulating: {e}"))?;
 
     // encrypt (wrap) CEK
     let iv = Aes256Gcm::generate_nonce(&mut OsRng);

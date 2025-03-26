@@ -25,7 +25,7 @@
 //! [RFC7638]: https://www.rfc-editor.org/rfc/rfc7638
 //! [RFC7517]: https://www.rfc-editor.org/rfc/rfc7517
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use base64ct::{Base64UrlUnpadded, Encoding};
 use multibase::Base;
 use serde::{Deserialize, Serialize};
@@ -72,10 +72,23 @@ pub struct PublicKeyJwk {
 }
 
 impl PublicKeyJwk {
+    /// Convert a key as bytes into a JWK.
+    ///
+    /// # Errors
+    /// Will return an error if the key is not a valid Ed25519 key.
+    pub fn from_bytes(key_bytes: &[u8]) -> Result<Self> {
+        Ok(Self {
+            kty: KeyType::Okp,
+            crv: Curve::Ed25519,
+            x: Base64UrlUnpadded::encode_string(key_bytes),
+            ..Self::default()
+        })
+    }
+
     /// Convert a multi-base encoded key into a JWK.
     ///
     /// # Errors
-    /// LATER: document errors.
+    /// Will return an error if the key is not a valid multi-base encoded key.
     pub fn from_multibase(key: &str) -> Result<Self> {
         let (_, key_bytes) =
             multibase::decode(key).map_err(|e| anyhow!("issue decoding key: {e}"))?;

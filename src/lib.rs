@@ -5,6 +5,7 @@
 
 pub mod cose;
 pub mod jose;
+pub mod proof;
 
 use std::future::{Future, IntoFuture};
 

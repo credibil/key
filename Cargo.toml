@@ -31,6 +31,7 @@ aes-kw = { version = "0.2.1", features = ["alloc"] }
 anyhow = "1.0.97"
 base64ct = { version = "1.7.3", features = ["std"] }
 chacha20poly1305 = "0.10.1"
+chrono = { version = "0.4.40", features = ["serde"] }
 ciborium = "0.2.2"
 coset = "0.3.8"
 ecdsa = "0.16.9"

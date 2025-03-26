@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use base64ct::{Base64UrlUnpadded, Encoding};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -60,7 +60,8 @@ impl SecretKey {
         }
 
         // secp256k1
-        let aes_key = ecies::utils::decapsulate(&sender_public.try_into()?, &self.try_into()?)?;
+        let aes_key = ecies::utils::decapsulate(&sender_public.try_into()?, &self.try_into()?)
+            .map_err(|e| anyhow!("issue decapsulating: {e}"))?;
         Ok(SharedSecret(aes_key))
     }
 }

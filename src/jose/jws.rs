@@ -73,6 +73,7 @@ pub struct Jws {
 
 impl Jws {
     /// Returns a new JWS builder.
+    #[must_use]
     pub fn builder() -> JwsBuilder<NoPayload, NoSigners> {
         JwsBuilder::new()
     }
@@ -259,9 +260,23 @@ impl PublicKeyJwk {
     ///
     /// # Errors
     ///
-    /// Will return an error if the signature is invalid, the JWK is invalid, or the
-    /// algorithm is unsupported.
+    /// Will return an error if the signature is invalid, the JWK is invalid, or
+    /// the algorithm is unsupported.
     pub fn verify(&self, msg: &str, sig: &[u8]) -> Result<()> {
+        match self.crv {
+            Curve::Es256K => self.verify_es256k(msg.as_bytes(), sig),
+            Curve::Ed25519 => self.verify_eddsa(msg.as_bytes(), sig),
+            Curve::X25519 => bail!("unsupported DSA curve"),
+        }
+    }
+
+    /// Verify the signature of the provided message in bytes using the JWK.
+    ///
+    /// # Errors
+    ///
+    /// Will return an error if the signature is invalid, the JWK is invalid, or
+    /// the algorithm is unsupported.
+    pub fn verify_bytes(&self, msg: &[u8], sig: &[u8]) -> Result<()> {
         match self.crv {
             Curve::Es256K => self.verify_es256k(msg, sig),
             Curve::Ed25519 => self.verify_eddsa(msg, sig),
@@ -270,7 +285,7 @@ impl PublicKeyJwk {
     }
 
     // Verify the signature of the provided message using the ES256K algorithm.
-    fn verify_es256k(&self, msg: &str, sig: &[u8]) -> Result<()> {
+    fn verify_es256k(&self, msg: &[u8], sig: &[u8]) -> Result<()> {
         use ecdsa::{Signature, VerifyingKey};
         use k256::Secp256k1;
 
@@ -284,11 +299,11 @@ impl PublicKeyJwk {
         let signature: Signature<Secp256k1> = Signature::from_slice(sig)?;
         let normalised = signature.normalize_s().unwrap_or(signature);
 
-        Ok(verifying_key.verify(msg.as_bytes(), &normalised)?)
+        Ok(verifying_key.verify(msg, &normalised)?)
     }
 
     // Verify the signature of the provided message using the EdDSA algorithm.
-    fn verify_eddsa(&self, msg: &str, sig_bytes: &[u8]) -> Result<()> {
+    fn verify_eddsa(&self, msg: &[u8], sig_bytes: &[u8]) -> Result<()> {
         use ed25519_dalek::{Signature, VerifyingKey};
 
         // build verifying key
@@ -301,7 +316,7 @@ impl PublicKeyJwk {
             .map_err(|e| anyhow!("unable to build signature: {e}"))?;
 
         verifying_key
-            .verify(msg.as_bytes(), &signature)
+            .verify(msg, &signature)
             .map_err(|e| anyhow!("unable to verify signature: {e}"))
     }
 }
