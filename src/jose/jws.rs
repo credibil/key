@@ -136,19 +136,20 @@ impl Jws {
         Ok(format!("{header}.{payload}.{signature}"))
     }
 
-    // /// Extracts the signer's DID from the `kid` of the first JWS signature.
-    // ///
-    // /// # Errors
-    // /// LATER: Add errors
-    // pub fn did(&self) -> Result<String> {
-    //     let Some(kid) = self.signatures[0].protected.kid() else {
-    //         return Err(anyhow!("Invalid `kid`"));
-    //     };
-    //     let Some(did) = kid.split('#').next() else {
-    //         return Err(anyhow!("Invalid DID"));
-    //     };
-    //     Ok(did.to_owned())
-    // }
+    /// Extracts the signer's DID from the `kid` of the first JWS signature.
+    ///
+    /// # Errors
+    /// If the `kid` is not found or is invalid, an error is returned. If the
+    /// format of the `kid` does not have a key fragment, an error is returned.
+    pub fn did(&self) -> Result<String> {
+        let Some(kid) = self.signatures[0].protected.kid() else {
+            return Err(anyhow!("Invalid `kid`"));
+        };
+        let Some(did) = kid.split('#').next() else {
+            return Err(anyhow!("Invalid DID"));
+        };
+        Ok(did.to_owned())
+    }
 }
 
 use std::fmt;
