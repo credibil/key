@@ -13,7 +13,6 @@ use std::str::FromStr;
 use anyhow::{Result, anyhow, bail};
 use base64ct::{Base64UrlUnpadded, Encoding};
 use ecdsa::signature::Verifier as _;
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use crate::jose::jwk::PublicKeyJwk;
@@ -53,7 +52,7 @@ pub async fn decode<Fut, T>(
     compact_jws: &str, jwk_resolver: impl Fn(String) -> Fut,
 ) -> Result<Jwt<T>>
 where
-    T: DeserializeOwned + Send,
+    T: for<'a> Deserialize<'a> + Send,
     Fut: Future<Output = Result<PublicKeyJwk>> + Send,
 {
     tracing::debug!("decode");
@@ -84,7 +83,7 @@ impl Jws {
     /// TODO: document errors
     pub async fn verify<Fut, T>(&self, jwk_resolver: impl Fn(String) -> Fut) -> Result<Jwt<T>>
     where
-        T: DeserializeOwned + Send,
+        T: for<'a> Deserialize<'a> + Send,
         Fut: Future<Output = Result<PublicKeyJwk>> + Send,
     {
         for signature in &self.signatures {
