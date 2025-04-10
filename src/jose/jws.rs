@@ -7,6 +7,8 @@
 //! [RFC7515]: https://www.rfc-editor.org/rfc/rfc7515
 //! [RFC7518]: https://www.rfc-editor.org/rfc/rfc7518
 
+use std::fmt;
+use std::fmt::{Display, Formatter};
 use std::future::Future;
 use std::str::FromStr;
 
@@ -100,18 +102,13 @@ impl Jws {
             public_jwk.verify(&format!("{header}.{}", self.payload), &sig)?;
         }
 
-        let claims = Base64UrlUnpadded::decode_vec(&self.payload)
-            .map_err(|e| anyhow!("issue decoding claims: {e}"))?;
-        let claims = serde_json::from_slice(&claims)
-            .map_err(|e| anyhow!("issue deserializing claims:{e}"))?;
-
         let Some(signature) = self.signatures.first() else {
             bail!("no signature found");
         };
 
         Ok(Jwt {
             header: signature.protected.clone(),
-            claims,
+            claims: self.payload()?,
         })
     }
 
@@ -127,7 +124,6 @@ impl Jws {
         };
 
         let header_bytes = serde_json::to_vec(&signature.protected)?;
-
         let header = Base64UrlUnpadded::encode_string(&header_bytes);
         let payload = &self.payload;
         let signature = &signature.signature;
@@ -149,11 +145,22 @@ impl Jws {
         };
         Ok(did.to_owned())
     }
-}
 
-use std::fmt;
-use std::fmt::Display;
-use std::fmt::Formatter;
+    /// Deserialize payload from base64url encoded string.
+    ///
+    /// # Errors
+    /// An error is returned if the payload cannot be decoded or deserialized.
+    pub fn payload<T>(&self) -> Result<T>
+    where
+        T: for<'a> Deserialize<'a>,
+    {
+        let payload = Base64UrlUnpadded::decode_vec(&self.payload)
+            .map_err(|e| anyhow!("issue decoding claims: {e}"))?;
+        let claims = serde_json::from_slice(&payload)
+            .map_err(|e| anyhow!("issue deserializing claims:{e}"))?;
+        Ok(claims)
+    }
+}
 
 impl Display for Jws {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
