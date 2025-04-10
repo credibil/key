@@ -243,7 +243,7 @@ pub struct Header {
 /// encrypting the plaintext to produce the ciphertext and the Authentication
 /// Tag. MUST be an AEAD algorithm.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
-pub enum ContentAlgorithm {
+pub enum EncAlgorithm {
     /// AES GCM using a 256-bit key.
     #[default]
     #[serde(rename = "A256GCM")]
@@ -260,7 +260,7 @@ pub enum ContentAlgorithm {
 /// The algorithm used to encrypt (key encryption) or derive (key agreement)
 /// the value of the shared content encryption key (CEK).
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
-pub enum KeyAlgorithm {
+pub enum AlgAlgorithm {
     /// Elliptic Curve Diffie-Hellman Ephemeral-Static key agreement using
     /// Concat KDF.
     ///

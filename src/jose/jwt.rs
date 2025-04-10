@@ -8,6 +8,10 @@
 //! signed or integrity protected with a Message Authentication Code
 //! (MAC) and/or encrypted.
 
+use std::str::FromStr;
+
+use anyhow::anyhow;
+use base64ct::{Base64UrlUnpadded, Encoding};
 use serde::Serialize;
 
 use crate::jose::jws::Protected;
@@ -20,4 +24,29 @@ pub struct Jwt<T> {
 
     /// The JWT claims.
     pub claims: T,
+}
+
+impl<T> FromStr for Jwt<T>
+where
+    T: for<'de> serde::Deserialize<'de>,
+{
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let parts: Vec<&str> = s.split('.').collect();
+        if parts.len() < 2 {
+            return Err(anyhow!("invalid JWT"));
+        }
+
+        let header = Base64UrlUnpadded::decode_vec(parts[0])
+            .map_err(|e| anyhow!("issue decoding header: {e}"))?;
+        let header = serde_json::from_slice(&header)
+            .map_err(|e| anyhow!("issue deserializing header:{e}"))?;
+        let claims = Base64UrlUnpadded::decode_vec(parts[1])
+            .map_err(|e| anyhow!("issue decoding claims: {e}"))?;
+        let claims = serde_json::from_slice(&claims)
+            .map_err(|e| anyhow!("issue deserializing claims:{e}"))?;
+
+        Ok(Jwt { header, claims })
+    }
 }
