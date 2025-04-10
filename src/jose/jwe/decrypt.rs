@@ -11,7 +11,7 @@ use serde::de::DeserializeOwned;
 use super::key;
 use crate::jose::jwe::key::PublicKey;
 use crate::jose::jwe::{
-    Header, Jwe, KeyAlgorithm, KeyEncryption, Protected, ProtectedFlat, Recipients,
+    Header, Jwe, AlgAlgorithm, KeyEncryption, Protected, ProtectedFlat, Recipients,
 };
 use crate::Receiver;
 
@@ -50,8 +50,8 @@ pub async fn decrypt<T: DeserializeOwned>(jwe: &Jwe, receiver: &impl Receiver) -
     let shared_secret = receiver.shared_secret(sender_public).await?;
 
     let cek = match recipient.header.alg {
-        KeyAlgorithm::EcdhEs => shared_secret.to_bytes(),
-        KeyAlgorithm::EcdhEsA256Kw => {
+        AlgAlgorithm::EcdhEs => shared_secret.to_bytes(),
+        AlgAlgorithm::EcdhEsA256Kw => {
             let encrypted_key = Base64UrlUnpadded::decode_vec(&recipient.encrypted_key)
                 .map_err(|e| anyhow!("issue decoding `encrypted_key`: {e}"))?;
 
@@ -61,7 +61,7 @@ pub async fn decrypt<T: DeserializeOwned>(jwe: &Jwe, receiver: &impl Receiver) -
                 .try_into()
                 .map_err(|_| anyhow!("issue unwrapping cek"))?
         }
-        KeyAlgorithm::EciesEs256K => {
+        AlgAlgorithm::EciesEs256K => {
             let Some(base64_iv) = &recipient.header.iv else {
                 return Err(anyhow!("missing `iv`"));
             };

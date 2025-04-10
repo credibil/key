@@ -30,7 +30,7 @@ use base64ct::{Base64UrlUnpadded, Encoding};
 use multibase::Base;
 use serde::{Deserialize, Serialize};
 
-use crate::jose::jwe::KeyAlgorithm;
+use crate::jose::jwe::AlgAlgorithm;
 use crate::{Curve, KeyType};
 
 const ED25519_CODEC: [u8; 2] = [0xed, 0x01];
@@ -63,7 +63,7 @@ pub struct PublicKeyJwk {
 
     /// Algorithm intended for use with the key.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub alg: Option<KeyAlgorithm>,
+    pub alg: Option<AlgAlgorithm>,
 
     /// Use of the key.
     #[serde(rename = "use")]

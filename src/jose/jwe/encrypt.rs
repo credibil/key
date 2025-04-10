@@ -15,15 +15,15 @@ use x25519_dalek::EphemeralSecret;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::jose::jwe::{
-    ContentAlgorithm, Header, Jwe, KeyAlgorithm, KeyEncryption, Protected, PublicKey, Recipients,
+    EncAlgorithm, Header, Jwe, AlgAlgorithm, KeyEncryption, Protected, PublicKey, Recipients,
 };
 use crate::jose::jwk::PublicKeyJwk;
 use crate::{Curve, KeyType};
 
 /// Builds a JWE object using provided options.
 pub struct JweBuilder<P> {
-    content_algorithm: ContentAlgorithm,
-    key_algorithm: KeyAlgorithm,
+    content_algorithm: EncAlgorithm,
+    key_algorithm: AlgAlgorithm,
     payload: P,
     recipients: Vec<Recipient>,
 }
@@ -57,8 +57,8 @@ impl JweBuilder<NoPayload> {
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            content_algorithm: ContentAlgorithm::A256Gcm,
-            key_algorithm: KeyAlgorithm::EcdhEs,
+            content_algorithm: EncAlgorithm::A256Gcm,
+            key_algorithm: AlgAlgorithm::EcdhEs,
             payload: NoPayload,
             recipients: vec![],
         }
@@ -78,14 +78,14 @@ impl JweBuilder<NoPayload> {
 impl<P> JweBuilder<P> {
     /// The content encryption algorithm to use to encrypt the payload.
     #[must_use]
-    pub const fn content_algorithm(mut self, algorithm: ContentAlgorithm) -> Self {
+    pub const fn content_algorithm(mut self, algorithm: EncAlgorithm) -> Self {
         self.content_algorithm = algorithm;
         self
     }
 
     /// The key management algorithm to use for encrypting the JWE CEK.
     #[must_use]
-    pub const fn key_algorithm(mut self, algorithm: KeyAlgorithm) -> Self {
+    pub const fn key_algorithm(mut self, algorithm: AlgAlgorithm) -> Self {
         self.key_algorithm = algorithm;
         self
     }
@@ -123,14 +123,14 @@ impl<T: Serialize + Send> JweBuilder<Payload<T>> {
         // generate CEK and encrypt for each recipient
         let recipients = self.recipients.as_slice();
         let key_encrypter: &dyn KeyEncypter = match self.key_algorithm {
-            KeyAlgorithm::EcdhEs => {
+            AlgAlgorithm::EcdhEs => {
                 if recipients.len() != 1 {
                     return Err(anyhow!("ECDH-ES requires a single recipient"));
                 }
                 &EcdhEs::from(&recipients[0])
             }
-            KeyAlgorithm::EcdhEsA256Kw => &EcdhEsA256Kw::from(recipients),
-            KeyAlgorithm::EciesEs256K => &EciesEs256K::from(recipients),
+            AlgAlgorithm::EcdhEsA256Kw => &EcdhEsA256Kw::from(recipients),
+            AlgAlgorithm::EciesEs256K => &EciesEs256K::from(recipients),
         };
 
         // encrypt content
@@ -141,8 +141,8 @@ impl<T: Serialize + Send> JweBuilder<Payload<T>> {
         let aad = serde_json::to_vec(&protected)?;
 
         let encrypted = match self.content_algorithm {
-            ContentAlgorithm::A256Gcm => a256gcm(self.payload.0, &key_encrypter.cek(), &aad)?,
-            ContentAlgorithm::XChaCha20Poly1305 => {
+            EncAlgorithm::A256Gcm => a256gcm(self.payload.0, &key_encrypter.cek(), &aad)?,
+            EncAlgorithm::XChaCha20Poly1305 => {
                 xchacha20_poly1305(self.payload.0, &key_encrypter.cek(), &aad)?
             }
         };
@@ -200,7 +200,7 @@ impl KeyEncypter for EcdhEs {
     fn recipients(&self) -> Result<Recipients> {
         let key_encryption = KeyEncryption {
             header: Header {
-                alg: KeyAlgorithm::EcdhEs,
+                alg: AlgAlgorithm::EcdhEs,
                 kid: None,
                 epk: PublicKeyJwk {
                     kty: KeyType::Okp,
@@ -354,7 +354,7 @@ pub fn ecdh_a256kw(cek: &[u8; PUBLIC_KEY_LENGTH], recipient: &Recipient) -> Resu
 
     Ok(KeyEncryption {
         header: Header {
-            alg: KeyAlgorithm::EcdhEsA256Kw,
+            alg: AlgAlgorithm::EcdhEsA256Kw,
             kid: Some(recipient.key_id.clone()),
             epk: PublicKeyJwk {
                 kty: KeyType::Okp,
@@ -412,7 +412,7 @@ pub fn ecies_es256k(cek: &[u8; PUBLIC_KEY_LENGTH], recipient: &Recipient) -> Res
 
     Ok(KeyEncryption {
         header: Header {
-            alg: KeyAlgorithm::EciesEs256K,
+            alg: AlgAlgorithm::EciesEs256K,
             kid: Some(recipient.key_id.clone()),
             epk: PublicKeyJwk {
                 kty: KeyType::Ec,

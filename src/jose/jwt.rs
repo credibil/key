@@ -47,6 +47,6 @@ where
         let claims = serde_json::from_slice(&claims)
             .map_err(|e| anyhow!("issue deserializing claims:{e}"))?;
 
-        Ok(Jwt { header, claims })
+        Ok(Self { header, claims })
     }
 }

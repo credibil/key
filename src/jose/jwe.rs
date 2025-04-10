@@ -73,8 +73,8 @@ use crate::Receiver;
 /// Returns an error if the plaintext cannot be encrypted.
 pub fn encrypt<T: Serialize + Send>(plaintext: T, recipient_public: PublicKey) -> Result<Jwe> {
     JweBuilder::new()
-        .content_algorithm(ContentAlgorithm::A256Gcm)
-        .key_algorithm(KeyAlgorithm::EcdhEs)
+        .content_algorithm(EncAlgorithm::A256Gcm)
+        .key_algorithm(AlgAlgorithm::EcdhEs)
         .payload(plaintext)
         .add_recipient("", recipient_public)
         .build()
@@ -159,12 +159,12 @@ pub struct Protected {
     /// Identifies the algorithm used to encrypt or determine the value of the
     /// content encryption key (CEK).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub alg: Option<KeyAlgorithm>,
+    pub alg: Option<AlgAlgorithm>,
 
     /// The algorithm used to perform authenticated encryption on the plaintext
     /// to produce the ciphertext and the Authentication Tag. MUST be an AEAD
     /// algorithm.
-    pub enc: ContentAlgorithm,
+    pub enc: EncAlgorithm,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -218,7 +218,7 @@ pub struct KeyEncryption {
 pub struct Header {
     /// Identifies the algorithm used to encrypt or determine the value of the
     /// content encryption key (CEK).
-    pub alg: KeyAlgorithm,
+    pub alg: AlgAlgorithm,
 
     /// The fully qualified key ID (e.g. did:example:abc#encryption-key-id) of
     /// the public key used to encrypt the content encryption key (CEK).
@@ -355,8 +355,8 @@ mod test {
         let public_key = PublicKey::from(key_store.public_key);
 
         let jwe = JweBuilder::new()
-            .content_algorithm(ContentAlgorithm::A256Gcm)
-            .key_algorithm(KeyAlgorithm::EcdhEsA256Kw)
+            .content_algorithm(EncAlgorithm::A256Gcm)
+            .key_algorithm(AlgAlgorithm::EcdhEsA256Kw)
             .payload(&plaintext)
             .add_recipient("did:example:alice#key-id", public_key)
             .build()
@@ -422,8 +422,8 @@ mod test {
         let public_key = PublicKey::from(key_store.public_key);
 
         let jwe = JweBuilder::new()
-            .content_algorithm(ContentAlgorithm::A256Gcm)
-            .key_algorithm(KeyAlgorithm::EciesEs256K)
+            .content_algorithm(EncAlgorithm::A256Gcm)
+            .key_algorithm(AlgAlgorithm::EciesEs256K)
             .payload(&plaintext)
             .add_recipient("did:example:alice#key-id", public_key)
             .build()
@@ -441,7 +441,7 @@ mod test {
     //     let public_key = PublicKey::from(key_store.public_key);
 
     //     let mut builder =
-    //         JweBuilder::new().key_algorithm(KeyAlgorithm::EcdhEsA256Kw).payload(&plaintext);
+    //         JweBuilder::new().key_algorithm(AlgAlgorithm::EcdhEsA256Kw).payload(&plaintext);
     //     let jwe = builder.encrypt().expect("should encrypt");
 
     //     let jwe = builder
