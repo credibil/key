@@ -85,6 +85,14 @@ impl PublicKeyJwk {
         })
     }
 
+    /// Get the public key as bytes.
+    /// 
+    /// # Errors
+    /// Will return an error if the `x` field cannot be base64-url decoded.
+    pub fn to_bytes(&self) -> Result<Vec<u8>> {
+        Base64UrlUnpadded::decode_vec(&self.x).map_err(|e| anyhow!("issue decoding key: {e}"))
+    }
+
     /// Convert a multi-base encoded key into a JWK.
     ///
     /// # Errors
