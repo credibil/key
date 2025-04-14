@@ -435,7 +435,7 @@ where
         let protected = Protected {
             alg: signer.algorithm(),
             typ: self.typ,
-            key: Key::KeyId(verification_method),
+            key: verification_method,
             ..Protected::default()
         };
 
