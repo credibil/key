@@ -431,11 +431,13 @@ where
             bail!("no signers found");
         };
 
-        let verification_method = signer.verification_method().await?;
+        let Some(kid) = signer.verifying_key().await?.kid else {
+            bail!("no key ID found");
+        };
         let protected = Protected {
             alg: signer.algorithm(),
             typ: self.typ,
-            key: verification_method,
+            key: Key::KeyId(kid),
             ..Protected::default()
         };
 

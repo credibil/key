@@ -9,7 +9,6 @@ pub mod jose;
 use std::future::{Future, IntoFuture};
 
 use anyhow::Result;
-use jose::jws::Key;
 use serde::{Deserialize, Serialize};
 
 pub use crate::jose::jwa::Algorithm;
@@ -34,17 +33,10 @@ pub trait Signer: Send + Sync {
     ///
     /// The possibility of key rotation mean this key should only be referenced
     /// at the point of verifying a signature.
-    fn verifying_key(&self) -> impl Future<Output = Result<Vec<u8>>> + Send;
+    fn verifying_key(&self) -> impl Future<Output = Result<PublicKeyJwk>> + Send;
 
     /// Signature algorithm used by the signer.
     fn algorithm(&self) -> Algorithm;
-
-    /// The verification method the verifier should use to verify the signer's
-    /// signature. This is typically a DID URL + # + verification key ID.
-    ///
-    /// Async and fallible because the client may need to access key information
-    /// to construct the method reference.
-    fn verification_method(&self) -> impl Future<Output = Result<Key>> + Send;
 }
 
 /// A Receiver (Recipient) is required to decrypt an encrypted message.
