@@ -26,13 +26,15 @@ use crate::{Algorithm, Curve, Signer};
 ///
 /// # Errors
 /// TODO: document errors
-pub async fn encode<T>(payload: &T, signer: &impl Signer) -> Result<String>
+pub async fn encode<T>(
+    payload: &T, key_id: impl Into<String>, signer: &impl Signer,
+) -> Result<String>
 where
     T: Serialize + Send + Sync,
 {
     tracing::debug!("encode");
 
-    let jws = JwsBuilder::new().payload(payload).add_signer(signer).build().await?;
+    let jws = JwsBuilder::new().key_id(key_id).payload(payload).add_signer(signer).build().await?;
     let Some(signature) = jws.signatures.first() else {
         bail!("no signature found");
     };
@@ -75,7 +77,7 @@ pub struct Jws {
 impl Jws {
     /// Returns a new JWS builder.
     #[must_use]
-    pub fn builder() -> JwsBuilder<NoPayload, NoSigners> {
+    pub fn builder() -> JwsBuilder<NoPayload, NoSigners, NoKeyId> {
         JwsBuilder::new()
     }
 
@@ -351,11 +353,20 @@ impl Default for Key {
 
 /// Options to use when creating a permission grant.
 #[derive(Clone, Debug, Default)]
-pub struct JwsBuilder<P, S> {
+pub struct JwsBuilder<P, S, K> {
     typ: String,
     payload: P,
     signers: S,
+    key_id: K,
 }
+
+#[doc(hidden)]
+/// Typestate generic for a JWS builder with no key ID (cannot build).
+pub struct NoKeyId;
+
+#[doc(hidden)]
+/// Typestate generic for a JWS builder with a key ID (can build).
+pub struct KeyId(String);
 
 #[doc(hidden)]
 /// Typestate generic for a JWS builder with no payload.
@@ -372,7 +383,7 @@ pub struct NoSigners;
 pub struct Signers<'a, S: Signer>(pub Vec<&'a S>);
 
 /// Builder for creating a permission grant.
-impl JwsBuilder<NoPayload, NoSigners> {
+impl JwsBuilder<NoPayload, NoSigners, NoKeyId> {
     /// Returns a new [`SubscribeBuilder`]
     #[must_use]
     pub fn new() -> Self {
@@ -381,21 +392,38 @@ impl JwsBuilder<NoPayload, NoSigners> {
             typ: "jwt".into(),
             payload: NoPayload,
             signers: NoSigners,
+            key_id: NoKeyId,
         }
     }
 
-    /// Set the payload to be signed.
+    /// Set the key ID to be used for signing.
     #[must_use]
-    pub fn payload<T: Serialize + Send>(self, payload: T) -> JwsBuilder<Payload<T>, NoSigners> {
+    pub fn key_id(&self, key_id: impl Into<String>) -> JwsBuilder<NoPayload, NoSigners, KeyId> {
         JwsBuilder {
-            typ: self.typ,
-            payload: Payload(payload),
+            typ: self.typ.clone(),
+            payload: NoPayload,
             signers: NoSigners,
+            key_id: KeyId(key_id.into()),
         }
     }
 }
 
-impl<P, S> JwsBuilder<P, S> {
+impl JwsBuilder<NoPayload, NoSigners, KeyId> {
+    /// Set the payload to be signed.
+    #[must_use]
+    pub fn payload<T: Serialize + Send>(
+        self, payload: T,
+    ) -> JwsBuilder<Payload<T>, NoSigners, KeyId> {
+        JwsBuilder {
+            typ: self.typ,
+            payload: Payload(payload),
+            signers: NoSigners,
+            key_id: self.key_id,
+        }
+    }
+}
+
+impl<P, S, K> JwsBuilder<P, S, K> {
     /// Specify JWT `typ` header.
     #[must_use]
     pub fn typ(mut self, typ: impl Into<String>) -> Self {
@@ -408,16 +436,17 @@ impl<P, S> JwsBuilder<P, S> {
     /// At this point, the builder simply captures the signer for use in the final
     /// build step. Can only be done if the content hasn't been signed yet.
     #[must_use]
-    pub fn add_signer(self, signer: &impl Signer) -> JwsBuilder<P, Signers<impl Signer>> {
+    pub fn add_signer(self, signer: &impl Signer) -> JwsBuilder<P, Signers<impl Signer>, K> {
         JwsBuilder {
             typ: self.typ,
             payload: self.payload,
             signers: Signers(vec![signer]),
+            key_id: self.key_id,
         }
     }
 }
 
-impl<T, S> JwsBuilder<Payload<T>, Signers<'_, S>>
+impl<T, S> JwsBuilder<Payload<T>, Signers<'_, S>, KeyId>
 where
     T: Serialize + Send,
     S: Signer,
@@ -431,13 +460,10 @@ where
             bail!("no signers found");
         };
 
-        let Some(kid) = signer.verifying_key().await?.kid else {
-            bail!("no key ID found");
-        };
         let protected = Protected {
             alg: signer.algorithm(),
             typ: self.typ,
-            key: Key::KeyId(kid),
+            key: Key::KeyId(self.key_id.0),
             ..Protected::default()
         };
 
