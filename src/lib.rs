@@ -37,13 +37,6 @@ pub trait Signer: Send + Sync {
 
     /// Signature algorithm used by the signer.
     fn algorithm(&self) -> Algorithm;
-
-    /// The verification method the verifier should use to verify the signer's
-    /// signature. This is typically a DID URL + # + verification key ID.
-    ///
-    /// Async and fallible because the client may need to access key information
-    /// to construct the method reference.
-    fn verification_method(&self) -> impl Future<Output = Result<String>> + Send;
 }
 
 /// A Receiver (Recipient) is required to decrypt an encrypted message.
