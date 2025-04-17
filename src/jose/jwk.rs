@@ -33,8 +33,11 @@ use serde::{Deserialize, Serialize};
 use crate::jose::jwe::AlgAlgorithm;
 use crate::{Curve, KeyType};
 
-const ED25519_CODEC: [u8; 2] = [0xed, 0x01];
-const X25519_CODEC: [u8; 2] = [0xec, 0x01];
+/// Prefix bytes to indicate Ed25519 multibase encoding.
+pub const ED25519_CODEC: [u8; 2] = [0xed, 0x01];
+
+/// Prefix bytes to indicate X25519 multibase encoding.
+pub const X25519_CODEC: [u8; 2] = [0xec, 0x01];
 
 /// Alias for multi-base encoded string.
 pub type MultiKey = String;

@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 pub use crate::jose::jwa::Algorithm;
 pub use crate::jose::jwe::{PublicKey, SecretKey, SharedSecret};
-pub use crate::jose::jwk::PublicKeyJwk;
+pub use crate::jose::jwk::{ED25519_CODEC, PublicKeyJwk, X25519_CODEC};
 pub use crate::jose::jws::Jws;
 pub use crate::jose::jwt::Jwt;
 
