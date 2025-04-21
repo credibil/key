@@ -7,16 +7,21 @@
 use std::collections::BTreeMap;
 
 use anyhow::anyhow;
-use ciborium::value::Integer;
 use ciborium::Value;
 use serde::{Deserialize, Serialize};
 
 use crate::{Curve, KeyType};
 
-const KEY_TYPE: i64 = 1;
-const CURVE: i64 = -1;
+const KTY: i64 = 1;
+const CRV: i64 = -1;
 const X: i64 = -2;
 const Y: i64 = -3;
+
+const KTY_OKP: i64 = 1;
+const KTY_EC: i64 = 2;
+const CRV_ED25519: i64 = 6;
+const CRV_X25519: i64 = 4;
+const CRV_ES256K: i64 = 8;
 
 /// Implements [`COSE_Key`] as defined in [RFC9052].
 ///
@@ -43,15 +48,13 @@ pub struct CoseKey {
 impl From<CoseKey> for Value {
     fn from(key: CoseKey) -> Self {
         let mut cbor = vec![
-            (KEY_TYPE.into(), key.kty.clone().into()),
-            (CURVE.into(), { key.crv.into() }),
+            (KTY.into(), key.kty.clone().into()),
+            (CRV.into(), { key.crv.into() }),
             (X.into(), Self::Bytes(key.x)),
         ];
-
         if key.kty == KeyType::Ec {
             cbor.push((Y.into(), { key.y.unwrap_or_default().into() }));
         }
-
         Self::Map(cbor)
     }
 }
@@ -61,49 +64,46 @@ impl TryFrom<Value> for CoseKey {
     type Error = anyhow::Error;
 
     fn try_from(v: Value) -> anyhow::Result<Self> {
-        if let Value::Map(map) = v.clone() {
-            let mut map: BTreeMap<Integer, Value> = map
-                .into_iter()
-                .map(|(k, v)| (k.as_integer().unwrap_or_else(|| 0.into()), v))
-                .collect::<BTreeMap<_, _>>();
+        let Value::Map(map) = v.clone() else {
+            return Err(anyhow!("Value is not a map: {v:?}"));
+        };
+        let mut map = map
+            .into_iter()
+            .map(|(k, v)| (k.as_integer().unwrap_or_else(|| 0.into()), v))
+            .collect::<BTreeMap<_, _>>();
 
-            let Some(kty) = map.remove(&Integer::from(KEY_TYPE)) else {
-                return Err(anyhow!("key type not found"));
-            };
-            let Some(crv) = map.remove(&Integer::from(CURVE)) else {
-                return Err(anyhow!("curve not found"));
-            };
-            let Some(Value::Bytes(x)) = map.remove(&Integer::from(X)) else {
-                return Err(anyhow!("x coordinate not found"));
-            };
+        let Some(kty) = map.remove(&KTY.into()) else {
+            return Err(anyhow!("key type not found"));
+        };
+        let Some(crv) = map.remove(&CRV.into()) else {
+            return Err(anyhow!("curve not found"));
+        };
+        let Some(Value::Bytes(x)) = map.remove(&X.into()) else {
+            return Err(anyhow!("x coordinate not found"));
+        };
 
-            let y = if kty == KeyType::Ec.into() {
-                let y = map
-                    .remove(&Integer::from(Y))
-                    .ok_or_else(|| anyhow!("y coordinate not found"))?;
-                y.as_bytes().cloned()
-            } else {
-                None
-            };
-
-            Ok(Self {
-                kty: kty.try_into()?,
-                crv: crv.try_into()?,
-                x,
-                y,
-            })
+        let y = if kty == KeyType::Ec.into() {
+            let y = map.remove(&Y.into()).ok_or_else(|| anyhow!("y coordinate not found"))?;
+            y.as_bytes().cloned()
         } else {
-            Err(anyhow!("Value is not a map: {v:?}"))
-        }
+            None
+        };
+
+        Ok(Self {
+            kty: kty.try_into()?,
+            crv: crv.try_into()?,
+            x,
+            y,
+        })
     }
 }
 
 impl From<KeyType> for Value {
     fn from(k: KeyType) -> Self {
         match k {
-            KeyType::Okp => Self::Integer(1.into()),
-            KeyType::Ec => Self::Integer(2.into()),
-            KeyType::Oct => Self::Integer(4.into()),
+            KeyType::Okp => Self::Integer(KTY_OKP.into()),
+            KeyType::Ec => Self::Integer(KTY_EC.into()),
+            _ => unimplemented!("unsupported key type"),
         }
     }
 }
@@ -112,25 +112,22 @@ impl TryInto<KeyType> for Value {
     type Error = anyhow::Error;
 
     fn try_into(self) -> anyhow::Result<KeyType> {
-        let Some(integer) = self.as_integer() else {
-            return Err(anyhow!("issue deserializing key type"));
-        };
-
-        match integer.into() {
-            1 => Ok(KeyType::Okp),
-            2 => Ok(KeyType::Ec),
-            4 => Ok(KeyType::Oct),
-            _ => Err(anyhow!("unsupported key type")),
+        if self == Value::Integer(KTY_OKP.into()) {
+            return Ok(KeyType::Okp);
         }
+        if self == Value::Integer(KTY_EC.into()) {
+            return Ok(KeyType::Ec);
+        }
+        Err(anyhow!("unsupported key type: {self:?}"))
     }
 }
 
 impl From<Curve> for Value {
     fn from(crv: Curve) -> Self {
         match crv {
-            Curve::Ed25519 => Self::Integer(6.into()),
-            Curve::Es256K => Self::Integer(8.into()),
-            Curve::X25519 => Self::Integer(1.into()),
+            Curve::Ed25519 => Self::Integer(CRV_ED25519.into()),
+            Curve::Es256K => Self::Integer(CRV_ES256K.into()),
+            Curve::X25519 => Self::Integer(CRV_X25519.into()),
         }
     }
 }
@@ -139,15 +136,13 @@ impl TryInto<Curve> for Value {
     type Error = anyhow::Error;
 
     fn try_into(self) -> anyhow::Result<Curve> {
-        let Some(integer) = self.as_integer() else {
-            return Err(anyhow!("issue deserializing curve"));
-        };
-
-        match integer.into() {
-            6 => Ok(Curve::Ed25519),
-            8 => Ok(Curve::Es256K),
-            _ => Err(anyhow!("unsupported curve: {integer:?}")),
+        if self == Value::Integer(CRV_ED25519.into()) {
+            return Ok(Curve::Ed25519);
         }
+        if self == Value::Integer(CRV_ES256K.into()) {
+            return Ok(Curve::Es256K);
+        }
+        Err(anyhow!("unsupported curve: {self:?}"))
     }
 }
 

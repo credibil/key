@@ -2,13 +2,11 @@
 //!
 //! This module provides CBOR helper functions and types.
 
-use std::io::Cursor;
 use std::ops::Deref;
 
 use anyhow::anyhow;
 use ciborium::Value;
-use coset::CoseError;
-use serde::de::{self, DeserializeOwned, Deserializer};
+use serde::de::{self, Deserializer};
 use serde::ser::Serializer;
 use serde::{Deserialize, Serialize};
 
@@ -31,11 +29,9 @@ where
 /// TODO: Document errors
 pub fn from_slice<T>(slice: &[u8]) -> anyhow::Result<T>
 where
-    T: DeserializeOwned,
+    T: for<'de> Deserialize<'de>,
 {
-    ciborium::from_reader(Cursor::new(&slice)).map_err(|e| {
-        anyhow!(CoseError::DecodeFailed(ciborium::de::Error::Semantic(None, e.to_string())))
-    })
+    ciborium::from_reader(slice).map_err(|e| anyhow!(e.to_string()))
 }
 
 /// Wrap types that require tagging with tag 24.
@@ -55,12 +51,15 @@ impl<T: Serialize> Tag24<T> {
     ///
     /// # Errors
     /// TODO: Document errors
-    pub fn to_vec(&self) -> anyhow::Result<Vec<u8>> {
+    pub fn to_cbor(&self) -> anyhow::Result<Vec<u8>> {
         to_vec(&self.0)
     }
 }
 
-impl<T: DeserializeOwned> TryFrom<Value> for Tag24<T> {
+impl<T> TryFrom<Value> for Tag24<T>
+where
+    T: for<'de> Deserialize<'de>,
+{
     type Error = anyhow::Error;
 
     fn try_from(v: Value) -> anyhow::Result<Self> {
@@ -83,13 +82,16 @@ impl<T: Serialize> Serialize for Tag24<T> {
     }
 }
 
-impl<'de, T: DeserializeOwned> Deserialize<'de> for Tag24<T> {
+impl<'de, T> Deserialize<'de> for Tag24<T>
+where
+    Tag24<T>: TryFrom<ciborium::Value>,
+{
     fn deserialize<D>(deserializer: D) -> anyhow::Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
         let value = Value::deserialize(deserializer)?;
-        value.try_into().map_err(de::Error::custom)
+        value.try_into().map_err(|_| de::Error::custom(format!("failed to deserialize Tag24",)))
     }
 }
 
