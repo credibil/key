@@ -6,7 +6,7 @@ use aes_gcm::{AeadInPlace, Aes256Gcm, Key, Nonce, Tag};
 use aes_kw::Kek;
 use anyhow::{Result, anyhow};
 use base64ct::{Base64UrlUnpadded, Encoding};
-use serde::Deserialize;
+use serde::de::DeserializeOwned;
 
 use super::key;
 use crate::Receiver;
@@ -23,7 +23,7 @@ use crate::jose::jwe::{
 #[allow(dead_code)]
 pub async fn decrypt<T>(jwe: &Jwe, receiver: &impl Receiver) -> Result<T>
 where
-    T: for<'de> Deserialize<'de>,
+    T: DeserializeOwned,
 {
     let recipient = match &jwe.recipients {
         Recipients::One(recipient) => recipient,

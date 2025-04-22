@@ -53,6 +53,7 @@ mod key;
 
 use anyhow::{Result, bail};
 use base64ct::{Base64UrlUnpadded, Encoding};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -86,7 +87,7 @@ pub fn encrypt<T: Serialize + Send>(plaintext: T, recipient_public: PublicKey) -
 /// Returns an error if the JWE cannot be decrypted.
 pub async fn decrypt<T>(jwe: &Jwe, receiver: &impl Receiver) -> Result<T>
 where
-    T: for<'de> Deserialize<'de>,
+    T: DeserializeOwned,
 {
     decrypt::decrypt(jwe, receiver).await
 }
