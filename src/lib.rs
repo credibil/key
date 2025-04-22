@@ -3,7 +3,6 @@
 //! This crate provides common utilities for the Credibil project and is not
 //! intended to be used directly.
 
-pub mod cose;
 pub mod jose;
 
 use std::future::{Future, IntoFuture};
@@ -124,4 +123,7 @@ pub enum Curve {
     /// secp256k1 curve.
     #[serde(rename = "ES256K", alias = "secp256k1")]
     Es256K,
+
+    /// secp256r1 curve.
+    P256,
 }

@@ -4,16 +4,16 @@ use std::str::FromStr;
 use aes_gcm::aead::KeyInit; // heapless,
 use aes_gcm::{AeadInPlace, Aes256Gcm, Key, Nonce, Tag};
 use aes_kw::Kek;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use base64ct::{Base64UrlUnpadded, Encoding};
 use serde::de::DeserializeOwned;
 
 use super::key;
+use crate::Receiver;
 use crate::jose::jwe::key::PublicKey;
 use crate::jose::jwe::{
-    Header, Jwe, AlgAlgorithm, KeyEncryption, Protected, ProtectedFlat, Recipients,
+    AlgAlgorithm, Header, Jwe, KeyEncryption, Protected, ProtectedFlat, Recipients,
 };
-use crate::Receiver;
 
 /// Decrypt the JWE and return the plaintext.
 ///
@@ -21,7 +21,10 @@ use crate::Receiver;
 ///
 /// Returns an error if the JWE cannot be decrypted.
 #[allow(dead_code)]
-pub async fn decrypt<T: DeserializeOwned>(jwe: &Jwe, receiver: &impl Receiver) -> Result<T> {
+pub async fn decrypt<T>(jwe: &Jwe, receiver: &impl Receiver) -> Result<T>
+where
+    T: DeserializeOwned,
+{
     let recipient = match &jwe.recipients {
         Recipients::One(recipient) => recipient,
         Recipients::Many { recipients } => {
