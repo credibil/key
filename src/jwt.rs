@@ -14,7 +14,7 @@ use anyhow::anyhow;
 use base64ct::{Base64UrlUnpadded, Encoding};
 use serde::Serialize;
 
-use crate::jose::jws::Protected;
+use crate::jws::Protected;
 
 /// Represents a JWT as used for proof and credential presentation.
 #[derive(Clone, Debug, Default, Serialize, PartialEq, Eq)]
