@@ -53,17 +53,14 @@ mod key;
 
 use anyhow::{Result, bail};
 use base64ct::{Base64UrlUnpadded, Encoding};
+use encrypt::JweBuilder;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub use self::encrypt::{
-    Encrypted, JweBuilder, NoPayload, Payload, Recipient, a256gcm, ecdh_a256kw, ecies_es256k,
-    xchacha20_poly1305,
-};
 pub use self::key::{PublicKey, SecretKey, SharedSecret};
 use crate::Receiver;
-use crate::jose::jwk::PublicKeyJwk;
+use crate::jwk::PublicKeyJwk;
 
 /// Encrypt plaintext using the defaults of A256GCM content encryption and
 /// ECDH-ES key agreement algorithms.

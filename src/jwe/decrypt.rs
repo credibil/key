@@ -10,8 +10,8 @@ use serde::de::DeserializeOwned;
 
 use super::key;
 use crate::Receiver;
-use crate::jose::jwe::key::PublicKey;
-use crate::jose::jwe::{
+use crate::jwe::key::PublicKey;
+use crate::jwe::{
     AlgAlgorithm, Header, Jwe, KeyEncryption, Protected, ProtectedFlat, Recipients,
 };
 

@@ -30,7 +30,7 @@ use base64ct::{Base64UrlUnpadded, Encoding};
 use multibase::Base;
 use serde::{Deserialize, Serialize};
 
-use crate::jose::jwe::AlgAlgorithm;
+use crate::jwe::AlgAlgorithm;
 use crate::{Curve, KeyType};
 
 /// Prefix bytes to indicate Ed25519 multibase encoding.

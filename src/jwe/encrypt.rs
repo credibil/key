@@ -14,10 +14,10 @@ use serde::Serialize;
 use x25519_dalek::EphemeralSecret;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use crate::jose::jwe::{
+use crate::jwe::{
     EncAlgorithm, Header, Jwe, AlgAlgorithm, KeyEncryption, Protected, PublicKey, Recipients,
 };
-use crate::jose::jwk::PublicKeyJwk;
+use crate::jwk::PublicKeyJwk;
 use crate::{Curve, KeyType};
 
 /// Builds a JWE object using provided options.
