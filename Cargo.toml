@@ -1,6 +1,6 @@
 [package]
-name = "credibil-infosec"
-description = "Credibil information security utilities"
+name = "credibil-jose"
+description = "Credibil information security utilities for Javascript Object Signing and Encryption (JOSE) and JSON Web Tokens (JWT)."
 license = "MIT OR Apache-2.0"
 readme = "README.md"
 authors = ["Credibil"]
@@ -9,8 +9,8 @@ edition = "2024"
 exclude = [".*", "snapshots/"]
 homepage = "https://credibil.io"
 keywords = ["credentials", "decentralized", "identity", "openid", "verifiable"]
-repository = "https://github.com/credibil/infosec"
-rust-version = "1.85"
+repository = "https://github.com/credibil/jose"
+rust-version = "1.86"
 version = "0.1.2"
 
 [lib]
