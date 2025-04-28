@@ -51,8 +51,10 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 pub use jwa::Algorithm;
-pub use jwk::{ED25519_CODEC, PublicKeyJwk, MultiKey, X25519_CODEC};
-pub use jws::{decode, encode, Key, Jws, JwsBuilder, Protected, Signature};
+pub use jwk::{ED25519_CODEC, MultiKey, PublicKeyJwk, X25519_CODEC};
+pub use jws::{
+    Jws, JwsBuilder, Key, Protected, Signature, decode as decode_jws, encode as encode_jws,
+};
 pub use jwt::Jwt;
 
 /// Signer is used by implementers to provide signing functionality for
