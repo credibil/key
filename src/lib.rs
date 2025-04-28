@@ -40,7 +40,7 @@
 //! [OpenID4VP]: https://openid.net/specs/openid-4-verifiable-presentations-1_0.html
 
 mod jwa;
-mod jwe;
+pub mod jwe;
 mod jwk;
 mod jws;
 mod jwt;
@@ -51,9 +51,8 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 pub use jwa::Algorithm;
-pub use jwe::{decrypt, encrypt, EncAlgorithm, Jwe, PublicKey, SecretKey, SharedSecret};
 pub use jwk::{ED25519_CODEC, PublicKeyJwk, MultiKey, X25519_CODEC};
-pub use jws::{decode, encode, Key, Jws, JwsBuilder};
+pub use jws::{decode, encode, Key, Jws, JwsBuilder, Protected, Signature};
 pub use jwt::Jwt;
 
 /// Signer is used by implementers to provide signing functionality for
@@ -123,14 +122,14 @@ pub trait Receiver: Send + Sync {
     ///         "did:example:alice#key-id".to_string()
     ///    }
     ///
-    /// async fn shared_secret(&self, sender_public: PublicKey) -> Result<SharedSecret> {
+    /// async fn shared_secret(&self, sender_public: PublicKey) -> Result<jwe::SharedSecret> {
     ///     let secret_key = SecretKey::from(self.secret.to_bytes());
     ///     secret_key.shared_secret(sender_public)
     /// }
     /// ```
     fn shared_secret(
-        &self, sender_public: PublicKey,
-    ) -> impl Future<Output = Result<SharedSecret>> + Send;
+        &self, sender_public: jwe::PublicKey,
+    ) -> impl Future<Output = Result<jwe::SharedSecret>> + Send;
 }
 
 /// Cryptographic key type.

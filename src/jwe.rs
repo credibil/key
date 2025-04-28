@@ -59,6 +59,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub use self::key::{PublicKey, SecretKey, SharedSecret};
+pub use encrypt::{a256gcm, ecdh_a256kw, ecies_es256k, xchacha20_poly1305, Recipient};
 use crate::Receiver;
 use crate::jwk::PublicKeyJwk;
 
