@@ -17,6 +17,7 @@ use base64ct::{Base64UrlUnpadded, Encoding};
 use ecdsa::signature::Verifier as _;
 use serde::{Deserialize, Serialize};
 
+use crate::KeyBinding;
 use crate::jwk::PublicKeyJwk;
 pub use crate::jwt::Jwt;
 use crate::{Algorithm, Curve, Signer};
@@ -26,8 +27,8 @@ use crate::{Algorithm, Curve, Signer};
 ///
 /// # Errors
 /// TODO: document errors
-pub async fn encode<T>(
-    payload: &T, verification_method: &Key, signer: &impl Signer,
+pub async fn encode_jws<T>(
+    payload: &T, verification_method: &KeyBinding, signer: &impl Signer,
 ) -> Result<String>
 where
     T: Serialize + Send + Sync,
@@ -57,7 +58,7 @@ where
 ///
 /// # Errors
 /// TODO: document errors
-pub async fn decode<Fut, T>(
+pub async fn decode_jws<Fut, T>(
     compact_jws: &str, jwk_resolver: impl Fn(String) -> Fut,
 ) -> Result<Jwt<T>>
 where
@@ -216,7 +217,7 @@ pub struct Signature {
 /// JWS header.
 ///
 /// N.B. The following headers are not included as they are unnecessary
-/// for Credibil: `jku`, `x5u`, `x5t`, `x5t#S256`, `cty`, `crit`.
+/// for Credibil: `x5u`, `x5t`, `x5t#S256`, `cty`, `crit`.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Protected {
     /// Digital signature algorithm identifier as per IANA "JSON Web Signature
@@ -230,7 +231,7 @@ pub struct Protected {
 
     /// The key material for the public key.
     #[serde(flatten)]
-    pub key: Key,
+    pub key: KeyBinding,
 
     /// Contains a certificate (or certificate chain) corresponding to the key
     /// used to sign the JWT. This element MAY be used to convey a key
@@ -250,21 +251,30 @@ pub struct Protected {
 }
 
 impl Protected {
-    /// Returns the `kid` if the key type is `KeyId`.
+    /// Returns the `kid` if the key type is `Kid` or `Jku`.
     #[must_use]
     pub fn kid(&self) -> Option<&str> {
         match &self.key {
-            Key::KeyId(kid) => Some(kid.as_str()),
-            Key::Jwk(_) => None,
+            KeyBinding::Kid(kid) | KeyBinding::Jku { kid, .. } => Some(kid.as_str()),
+            KeyBinding::Jwk(_) => None,
         }
     }
 
-    /// Returns the `kid` if the key is type `KeyId`.
+    /// Returns the `jwk` if the key is type `Jwk`.
     #[must_use]
     pub const fn jwk(&self) -> Option<&PublicKeyJwk> {
         match &self.key {
-            Key::Jwk(jwk) => Some(jwk),
-            Key::KeyId(_) => None,
+            KeyBinding::Jwk(jwk) => Some(jwk),
+            _ => None,
+        }
+    }
+
+    /// Returns the `jku` if the key type is `Jku`.
+    #[must_use]
+    pub fn jku(&self) -> Option<&str> {
+        match &self.key {
+            KeyBinding::Jku { jku, .. } => Some(jku.as_str()),
+            _ => None,
         }
     }
 }
@@ -335,27 +345,6 @@ impl PublicKeyJwk {
     }
 }
 
-/// The type of public key material for the JWT.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub enum Key {
-    /// Contains the key ID. If the Credential is bound to a DID, the kid refers
-    /// to a DID URL which identifies a particular key in the DID Document
-    /// that the Credential should bound to. Alternatively, may refer to a
-    /// key inside a JWKS.
-    #[serde(rename = "kid")]
-    KeyId(String),
-
-    /// Contains the key material the new Credential shall be bound to.
-    #[serde(rename = "jwk")]
-    Jwk(PublicKeyJwk),
-}
-
-impl Default for Key {
-    fn default() -> Self {
-        Self::KeyId(String::new())
-    }
-}
-
 /// Options to use when creating a permission grant.
 #[derive(Clone, Debug, Default)]
 pub struct JwsBuilder<P, S, K> {
@@ -371,7 +360,7 @@ pub struct NoKey;
 
 #[doc(hidden)]
 /// Typestate generic for a JWS builder with a public key (can build).
-pub struct WithKey(Key);
+pub struct WithKey(KeyBinding);
 
 #[doc(hidden)]
 /// Typestate generic for a JWS builder with no payload.
@@ -441,7 +430,7 @@ impl<P, S, K> JwsBuilder<P, S, K> {
 impl<P, S> JwsBuilder<P, S, NoKey> {
     /// Specify the method to use to resolve a verification key.
     #[must_use]
-    pub fn key_ref(self, key: &Key) -> JwsBuilder<P, S, WithKey> {
+    pub fn key_ref(self, key: &KeyBinding) -> JwsBuilder<P, S, WithKey> {
         JwsBuilder {
             typ: self.typ,
             payload: self.payload,

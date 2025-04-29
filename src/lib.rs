@@ -53,9 +53,51 @@ use serde::{Deserialize, Serialize};
 pub use jwa::Algorithm;
 pub use jwk::{ED25519_CODEC, MultiKey, PublicKeyJwk, X25519_CODEC};
 pub use jws::{
-    Jws, JwsBuilder, Key, Protected, Signature, decode as decode_jws, encode as encode_jws,
+    Jws, JwsBuilder, Protected, Signature, decode_jws, encode_jws,
 };
 pub use jwt::Jwt;
+
+/// The type of Proof-of-Possession public key to use in key binding.
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum KeyBinding {
+    /// A public key JWK.
+    Jwk(PublicKeyJwk),
+
+    /// A public key Key ID.
+    Kid(String),
+
+    /// A URL to a JWK Set and Key ID referencing a public key within the set.
+    Jku {
+        /// The URL of the JWK Set.
+        jku: String,
+
+        /// The Key ID of a public key.
+        kid: String,
+    },
+}
+
+impl Default for KeyBinding {
+    fn default() -> Self {
+        Self::Kid(String::new())
+    }
+}
+
+impl From<PublicKeyJwk> for KeyBinding {
+    fn from(jwk: PublicKeyJwk) -> Self {
+        Self::Jwk(jwk)
+    }
+}
+impl From<String> for KeyBinding {
+    fn from(kid: String) -> Self {
+        Self::Kid(kid)
+    }
+}
+impl From<(String, String)> for KeyBinding {
+    fn from((jku, kid): (String, String)) -> Self {
+        Self::Jku { jku, kid }
+    }
+}
 
 /// Signer is used by implementers to provide signing functionality for
 /// Verifiable Credential issuance and Verifiable Presentation submissions.
