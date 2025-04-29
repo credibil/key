@@ -46,7 +46,7 @@ mod jwt;
 
 use serde::{Deserialize, Serialize};
 
-pub use jwk::{ED25519_CODEC, MultiKey, PublicKeyJwk, X25519_CODEC};
+pub use jwk::PublicKeyJwk;
 pub use jws::{
     Jws, JwsBuilder, Protected, Signature, decode_jws, encode_jws,
 };
