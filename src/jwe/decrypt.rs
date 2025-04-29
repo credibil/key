@@ -6,14 +6,10 @@ use aes_gcm::{AeadInPlace, Aes256Gcm, Key, Nonce, Tag};
 use aes_kw::Kek;
 use anyhow::{Result, anyhow};
 use base64ct::{Base64UrlUnpadded, Encoding};
+use credibil_ose::{PublicKey, Receiver, TAG_PUBKEY_FULL};
 use serde::de::DeserializeOwned;
 
-use super::key;
-use crate::Receiver;
-use crate::jwe::key::PublicKey;
-use crate::jwe::{
-    AlgAlgorithm, Header, Jwe, KeyEncryption, Protected, ProtectedFlat, Recipients,
-};
+use crate::jwe::{AlgAlgorithm, Header, Jwe, KeyEncryption, Protected, ProtectedFlat, Recipients};
 
 /// Decrypt the JWE and return the plaintext.
 ///
@@ -44,7 +40,7 @@ where
         let y = Base64UrlUnpadded::decode_vec(y)
             .map_err(|e| anyhow!("issue decoding sender public key `y`: {e}"))?;
         public_key.extend_from_slice(&y);
-        public_key.insert(0, key::TAG_PUBKEY_FULL);
+        public_key.insert(0, TAG_PUBKEY_FULL);
     }
 
     let sender_public = PublicKey::try_from(public_key)?;

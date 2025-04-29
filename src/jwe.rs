@@ -49,18 +49,16 @@
 
 mod decrypt;
 mod encrypt;
-mod key;
 
 use anyhow::{Result, bail};
 use base64ct::{Base64UrlUnpadded, Encoding};
+use credibil_ose::{PublicKey, Receiver};
 use encrypt::JweBuilder;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub use self::key::{PublicKey, SecretKey, SharedSecret};
 pub use encrypt::{a256gcm, ecdh_a256kw, ecies_es256k, xchacha20_poly1305, Recipient};
-use crate::Receiver;
 use crate::jwk::PublicKeyJwk;
 
 /// Encrypt plaintext using the defaults of A256GCM content encryption and
@@ -297,6 +295,7 @@ pub enum Zip {
 
 #[cfg(test)]
 mod test {
+    use credibil_ose::{SecretKey, SharedSecret};
     use ed25519_dalek::PUBLIC_KEY_LENGTH;
     use rand::rngs::OsRng;
     use sha2::Digest;

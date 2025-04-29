@@ -14,13 +14,13 @@ use std::str::FromStr;
 
 use anyhow::{Result, anyhow, bail};
 use base64ct::{Base64UrlUnpadded, Encoding};
+use credibil_ose::{Algorithm, Curve, Signer};
 use ecdsa::signature::Verifier as _;
 use serde::{Deserialize, Serialize};
 
 use crate::KeyBinding;
 use crate::jwk::PublicKeyJwk;
 pub use crate::jwt::Jwt;
-use crate::{Algorithm, Curve, Signer};
 
 /// Encode the provided header and claims payload and sign, returning a JWT in
 /// compact JWS form.

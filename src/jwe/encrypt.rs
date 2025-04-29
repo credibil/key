@@ -7,6 +7,7 @@ use aes_kw::Kek;
 use anyhow::{Result, anyhow};
 use base64ct::{Base64UrlUnpadded, Encoding};
 use chacha20poly1305::XChaCha20Poly1305;
+use credibil_ose::{Curve, KeyType};
 // use ecies::consts::{AEAD_TAG_LENGTH, NONCE_LENGTH, UNCOMPRESSED_PUBLIC_KEY_SIZE};
 use ed25519_dalek::PUBLIC_KEY_LENGTH;
 use rand::rngs::OsRng;
@@ -15,10 +16,9 @@ use x25519_dalek::EphemeralSecret;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::jwe::{
-    EncAlgorithm, Header, Jwe, AlgAlgorithm, KeyEncryption, Protected, PublicKey, Recipients,
+    AlgAlgorithm, EncAlgorithm, Header, Jwe, KeyEncryption, Protected, PublicKey, Recipients,
 };
 use crate::jwk::PublicKeyJwk;
-use crate::{Curve, KeyType};
 
 /// Builds a JWE object using provided options.
 pub struct JweBuilder<P> {
