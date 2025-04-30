@@ -1,15 +1,9 @@
 //! # JWE Builder
 
-use aes_gcm::aead::KeyInit;
-use aes_gcm::{AeadCore, AeadInPlace, Aes256Gcm};
-use aes_kw::Kek;
 use anyhow::{Result, anyhow};
 use base64ct::{Base64UrlUnpadded, Encoding};
-use credibil_ose::{AlgAlgorithm, Curve, EncAlgorithm, KeyType, PublicKey};
-use ed25519_dalek::PUBLIC_KEY_LENGTH;
-use rand::rngs::OsRng;
+use credibil_ose::{AlgAlgorithm, Curve, EncAlgorithm, KeyType, PublicKey, PUBLIC_KEY_LENGTH};
 use serde::Serialize;
-use x25519_dalek::EphemeralSecret;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::jwe::{Header, Jwe, KeyEncryption, Protected, Recipients};
@@ -122,7 +116,7 @@ impl<T: Serialize + Send> JweBuilder<Payload<T>> {
                 if recipients.len() != 1 {
                     return Err(anyhow!("ECDH-ES requires a single recipient"));
                 }
-                &EcdhEs::from(&recipients[0])
+                &EcdhEs::try_from(&recipients[0])?
             }
             AlgAlgorithm::EcdhEsA256Kw => &EcdhEsA256Kw::from(recipients),
             AlgAlgorithm::EciesEs256K => &EciesEs256K::from(recipients),
@@ -173,17 +167,25 @@ struct EcdhEs {
     cek: [u8; PUBLIC_KEY_LENGTH],
 }
 
-impl From<&Recipient> for EcdhEs {
-    fn from(recipient: &Recipient) -> Self {
-        // generate CEK using ECDH-ES
-        let ephemeral_secret = EphemeralSecret::random_from_rng(rand::thread_rng());
-        let ephemeral_public = x25519_dalek::PublicKey::from(&ephemeral_secret).to_bytes();
-        let cek = ephemeral_secret.diffie_hellman(&recipient.public_key.into()).to_bytes();
+impl TryFrom<&Recipient> for EcdhEs {
+    type Error = anyhow::Error;
+    fn try_from(recipient: &Recipient) -> Result<Self, Self::Error> {
+        let init_cek = AlgAlgorithm::EcdhEs.generate();
+        let enc_cek = AlgAlgorithm::EcdhEs.encrypt(
+            &init_cek,
+            &recipient.public_key,
+        )?;
 
-        Self {
-            ephemeral_public,
-            cek,
+        if enc_cek.encrypted_key.len() != PUBLIC_KEY_LENGTH {
+            return Err(anyhow!("unexpected encrypted key length"));
         }
+        let mut cek_bytes = [0; PUBLIC_KEY_LENGTH];
+        cek_bytes.copy_from_slice(&enc_cek.encrypted_key);
+
+        Ok(Self {
+            ephemeral_public: enc_cek.ephemeral_public.to_bytes(),
+            cek: cek_bytes,
+        })
     }
 }
 
@@ -226,7 +228,7 @@ impl<'a> From<&'a [Recipient]> for EcdhEsA256Kw<'a> {
     fn from(recipients: &'a [Recipient]) -> Self {
         Self {
             recipients,
-            cek: Aes256Gcm::generate_key(&mut rand::thread_rng()).into(),
+            cek: AlgAlgorithm::EcdhEsA256Kw.generate(),
         }
     }
 }
@@ -259,7 +261,7 @@ impl<'a> From<&'a [Recipient]> for EciesEs256K<'a> {
     fn from(recipients: &'a [Recipient]) -> Self {
         Self {
             recipients,
-            cek: Aes256Gcm::generate_key(&mut rand::thread_rng()).into(),
+            cek: AlgAlgorithm::EciesEs256K.generate(),
         }
     }
 }
@@ -284,16 +286,10 @@ impl KeyEncypter for EciesEs256K<'_> {
 /// # Errors
 /// LATER: add error docs
 pub fn ecdh_a256kw(cek: &[u8; PUBLIC_KEY_LENGTH], recipient: &Recipient) -> Result<KeyEncryption> {
-    // derive shared secret
-    let ephemeral_secret = EphemeralSecret::random_from_rng(rand::thread_rng());
-    let ephemeral_public = x25519_dalek::PublicKey::from(&ephemeral_secret);
-    let shared_secret = ephemeral_secret.diffie_hellman(&recipient.public_key.into());
-
-    // encrypt (wrap) CEK
-    let encrypted_key = Kek::from(*shared_secret.as_bytes())
-        .wrap_vec(cek)
-        .map_err(|e| anyhow!("issue wrapping cek: {e}"))?;
-
+    let enc_cek = AlgAlgorithm::EcdhEsA256Kw.encrypt(
+        cek,
+        &recipient.public_key,
+    )?;
     Ok(KeyEncryption {
         header: Header {
             alg: AlgAlgorithm::EcdhEsA256Kw,
@@ -301,12 +297,12 @@ pub fn ecdh_a256kw(cek: &[u8; PUBLIC_KEY_LENGTH], recipient: &Recipient) -> Resu
             epk: PublicKeyJwk {
                 kty: KeyType::Okp,
                 crv: Curve::Ed25519,
-                x: Base64UrlUnpadded::encode_string(ephemeral_public.as_bytes()),
+                x: Base64UrlUnpadded::encode_string(&enc_cek.ephemeral_public.to_bytes()),
                 ..PublicKeyJwk::default()
             },
             ..Header::default()
         },
-        encrypted_key: Base64UrlUnpadded::encode_string(&encrypted_key),
+        encrypted_key: Base64UrlUnpadded::encode_string(&enc_cek.encrypted_key),
     })
 }
 
@@ -316,41 +312,13 @@ pub fn ecdh_a256kw(cek: &[u8; PUBLIC_KEY_LENGTH], recipient: &Recipient) -> Resu
 /// # Errors
 /// LATER: add error docs
 pub fn ecies_es256k(cek: &[u8; PUBLIC_KEY_LENGTH], recipient: &Recipient) -> Result<KeyEncryption> {
-    // ----------------------------------------------------------------
-    // Using the `ecies` library's top-level `encrypt`.
-    // ----------------------------------------------------------------
-    // encrypt CEK using ECIES derived shared secret
-    // let encrypted = ecies::encrypt(&r.public_key.to_vec(), &self.cek)?;
-    // if encrypted.len()
-    //     != UNCOMPRESSED_PUBLIC_KEY_SIZE
-    //         + NONCE_LENGTH
-    //         + AEAD_TAG_LENGTH
-    //         + ENCRYPTED_KEY_LENGTH
-    // {
-    //     return Err(anyhow!("invalid encrypted key length"));
-    // }
+    let enc_cek = AlgAlgorithm::EciesEs256K.encrypt(
+        cek,
+        &recipient.public_key,
+    )?;
 
-    // // extract components
-    // let (ephemeral_public, remaining) = encrypted.split_at(UNCOMPRESSED_PUBLIC_KEY_SIZE);
-    // let (iv, remaining) = remaining.split_at(NONCE_LENGTH);
-    // let (tag, encrypted_key) = remaining.split_at(AEAD_TAG_LENGTH);
-    // ----------------------------------------------------------------
-
-    // derive shared secret
-    let (ephemeral_secret, ephemeral_public) = ecies::utils::generate_keypair();
-    let shared_secret =
-        ecies::utils::encapsulate(&ephemeral_secret, &recipient.public_key.try_into()?)
-            .map_err(|e| anyhow!("issue encapsulating: {e}"))?;
-
-    // encrypt (wrap) CEK
-    let iv = Aes256Gcm::generate_nonce(&mut OsRng);
-    let mut encrypted_key = *cek;
-    let tag = Aes256Gcm::new(&shared_secret.into())
-        .encrypt_in_place_detached(&iv, &[], &mut encrypted_key)
-        .map_err(|e| anyhow!("issue encrypting: {e}"))?;
-
-    // tagged secp256k1 uncompressed public key is 65 bytes
-    let ephemeral_public = ephemeral_public.serialize();
+    // Use to_vec to get the full long (65-byte) public key
+    let ephemeral_public = enc_cek.ephemeral_public.to_vec();
 
     Ok(KeyEncryption {
         header: Header {
@@ -363,9 +331,9 @@ pub fn ecies_es256k(cek: &[u8; PUBLIC_KEY_LENGTH], recipient: &Recipient) -> Res
                 y: Some(Base64UrlUnpadded::encode_string(&ephemeral_public[33..65])),
                 ..PublicKeyJwk::default()
             },
-            iv: Some(Base64UrlUnpadded::encode_string(&iv)),
-            tag: Some(Base64UrlUnpadded::encode_string(&tag)),
+            iv: enc_cek.iv.map(|iv| Base64UrlUnpadded::encode_string(&iv)),
+            tag: enc_cek.tag.map(|tag| Base64UrlUnpadded::encode_string(&tag)),
         },
-        encrypted_key: Base64UrlUnpadded::encode_string(&encrypted_key),
+        encrypted_key: Base64UrlUnpadded::encode_string(&enc_cek.encrypted_key),
     })
 }
