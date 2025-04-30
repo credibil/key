@@ -3,13 +3,12 @@ use std::str::FromStr;
 
 use aes_gcm::aead::KeyInit; // heapless,
 use aes_gcm::{AeadInPlace, Aes256Gcm, Key, Nonce, Tag};
-use aes_kw::Kek;
 use anyhow::{Result, anyhow};
 use base64ct::{Base64UrlUnpadded, Encoding};
-use credibil_ose::{PublicKey, Receiver, TAG_PUBKEY_FULL};
+use credibil_ose::{PublicKey, Receiver, TAG_PUBKEY_FULL, derive_cek};
 use serde::de::DeserializeOwned;
 
-use crate::jwe::{AlgAlgorithm, Header, Jwe, KeyEncryption, Protected, ProtectedFlat, Recipients};
+use crate::jwe::{Header, Jwe, KeyEncryption, Protected, ProtectedFlat, Recipients};
 
 /// Decrypt the JWE and return the plaintext.
 ///
@@ -48,44 +47,31 @@ where
     // derive shared_secret from recipient's private key and sender's public key
     let shared_secret = receiver.shared_secret(sender_public).await?;
 
-    let cek = match recipient.header.alg {
-        AlgAlgorithm::EcdhEs => shared_secret.to_bytes(),
-        AlgAlgorithm::EcdhEsA256Kw => {
-            let encrypted_key = Base64UrlUnpadded::decode_vec(&recipient.encrypted_key)
-                .map_err(|e| anyhow!("issue decoding `encrypted_key`: {e}"))?;
-
-            Kek::from(shared_secret.to_bytes())
-                .unwrap_vec(encrypted_key.as_slice())
-                .map_err(|e| anyhow!("issue unwrapping cek: {e}"))?
-                .try_into()
-                .map_err(|_| anyhow!("issue unwrapping cek"))?
-        }
-        AlgAlgorithm::EciesEs256K => {
-            let Some(base64_iv) = &recipient.header.iv else {
-                return Err(anyhow!("missing `iv`"));
-            };
-            let Some(base64_tag) = &recipient.header.tag else {
-                return Err(anyhow!("missing `iv`"));
-            };
-
-            let iv = Base64UrlUnpadded::decode_vec(base64_iv)
-                .map_err(|e| anyhow!("issue decoding `iv`: {e}"))?;
-            let tag = Base64UrlUnpadded::decode_vec(base64_tag)
-                .map_err(|e| anyhow!("issue decoding `tag`: {e}"))?;
-            let encrypted_key = Base64UrlUnpadded::decode_vec(&recipient.encrypted_key)
-                .map_err(|e| anyhow!("issue decoding `encrypted_key`: {e}"))?;
-
-            let mut buffer = encrypted_key;
-            let nonce = Nonce::from_slice(&iv);
-            let tag = Tag::from_slice(&tag);
-
-            Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(shared_secret.as_bytes()))
-                .decrypt_in_place_detached(nonce, &[], &mut buffer, tag)
-                .map_err(|e| anyhow!("issue decrypting: {e}"))?;
-
-            buffer.try_into().map_err(|_| anyhow!("issue unwrapping cek"))?
-        }
-    };
+    let encrypted_key = Base64UrlUnpadded::decode_vec(&recipient.encrypted_key)
+        .map_err(|e| anyhow!("issue decoding `encrypted_key`: {e}"))?;
+    let iv = &recipient
+        .header
+        .iv
+        .as_ref()
+        .map(|iv| {
+            Base64UrlUnpadded::decode_vec(iv).map_err(|e| anyhow!("issue decoding `iv`: {e}"))
+        })
+        .transpose()?;
+    let tag = &recipient
+        .header
+        .tag
+        .as_ref()
+        .map(|tag| {
+            Base64UrlUnpadded::decode_vec(tag).map_err(|e| anyhow!("issue decoding `tag`: {e}"))
+        })
+        .transpose()?;
+    let cek = derive_cek(
+        &recipient.header.alg,
+        &shared_secret,
+        Some(&encrypted_key),
+        iv.as_deref(),
+        tag.as_deref(),
+    )?;
 
     // unpack JWE
     let iv =
