@@ -5,7 +5,6 @@ use aes_gcm::{AeadCore, AeadInPlace, Aes256Gcm};
 use aes_kw::Kek;
 use anyhow::{Result, anyhow};
 use base64ct::{Base64UrlUnpadded, Encoding};
-use chacha20poly1305::XChaCha20Poly1305;
 use credibil_ose::{AlgAlgorithm, Curve, EncAlgorithm, KeyType, PublicKey};
 use ed25519_dalek::PUBLIC_KEY_LENGTH;
 use rand::rngs::OsRng;
@@ -136,19 +135,19 @@ impl<T: Serialize + Send> JweBuilder<Payload<T>> {
         };
         let aad = serde_json::to_vec(&protected)?;
 
-        let encrypted = match self.content_algorithm {
-            EncAlgorithm::A256Gcm => a256gcm(self.payload.0, &key_encrypter.cek(), &aad)?,
-            EncAlgorithm::XChaCha20Poly1305 => {
-                xchacha20_poly1305(self.payload.0, &key_encrypter.cek(), &aad)?
-            }
-        };
+        let payload = serde_json::to_vec(&self.payload.0)?;
+        let encrypted = self.content_algorithm.encrypt(
+            &payload,
+            &key_encrypter.cek(),
+            &aad,
+        )?;
 
         Ok(Jwe {
             protected,
             recipients: key_encrypter.recipients()?,
             aad: Base64UrlUnpadded::encode_string(&aad),
-            iv: encrypted.iv,
-            tag: encrypted.tag,
+            iv: Base64UrlUnpadded::encode_string(&encrypted.iv),
+            tag: Base64UrlUnpadded::encode_string(&encrypted.tag),
             ciphertext: Base64UrlUnpadded::encode_string(&encrypted.ciphertext),
             ..Jwe::default()
         })
@@ -277,59 +276,6 @@ impl KeyEncypter for EciesEs256K<'_> {
         }
         Ok(Recipients::Many { recipients })
     }
-}
-
-/// Encrypted content.
-#[derive(Clone, Debug, Default)]
-pub struct Encrypted {
-    /// Initialization vector.
-    pub iv: String,
-
-    /// Authentication tag.
-    pub tag: String,
-
-    /// Encrypted content.
-    pub ciphertext: Vec<u8>,
-}
-
-/// Encrypt the payload using A256GCM.
-///
-/// # Errors
-/// LATER: add error docs
-pub fn a256gcm<T: Serialize>(
-    plaintext: T, cek: &[u8; PUBLIC_KEY_LENGTH], aad: &[u8],
-) -> Result<Encrypted> {
-    let mut buffer = serde_json::to_vec(&plaintext)?;
-    let nonce = Aes256Gcm::generate_nonce(&mut rand::thread_rng());
-    let tag = Aes256Gcm::new(cek.into())
-        .encrypt_in_place_detached(&nonce, aad, &mut buffer)
-        .map_err(|e| anyhow!("issue encrypting: {e}"))?;
-
-    Ok(Encrypted {
-        iv: Base64UrlUnpadded::encode_string(&nonce),
-        tag: Base64UrlUnpadded::encode_string(&tag),
-        ciphertext: buffer,
-    })
-}
-
-/// Encrypt the payload using XChacha20+Poly1305.
-///
-/// # Errors
-/// LATER: add error docs
-pub fn xchacha20_poly1305<T: Serialize>(
-    plaintext: T, cek: &[u8; PUBLIC_KEY_LENGTH], aad: &[u8],
-) -> Result<Encrypted> {
-    let mut buffer = serde_json::to_vec(&plaintext)?;
-    let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
-    let tag = XChaCha20Poly1305::new(cek.into())
-        .encrypt_in_place_detached(&nonce, aad, &mut buffer)
-        .map_err(|e| anyhow!("issue encrypting: {e}"))?;
-
-    Ok(Encrypted {
-        iv: Base64UrlUnpadded::encode_string(&nonce),
-        tag: Base64UrlUnpadded::encode_string(&tag),
-        ciphertext: buffer,
-    })
 }
 
 /// Encrypt the content encryption key (CEK)for the specified recipient using

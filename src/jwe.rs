@@ -58,7 +58,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub use encrypt::{a256gcm, ecdh_a256kw, ecies_es256k, xchacha20_poly1305, Recipient};
+pub use encrypt::{ecdh_a256kw, ecies_es256k, Recipient};
 use crate::jwk::PublicKeyJwk;
 
 /// Encrypt plaintext using the defaults of A256GCM content encryption and

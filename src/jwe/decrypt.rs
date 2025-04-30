@@ -64,7 +64,7 @@ where
         })
         .transpose()?;
 
-    let cek = &recipient.header.alg.derive_cek(
+    let cek = &recipient.header.alg.decrypt(
         &shared_secret,
         Some(&encrypted_key),
         iv.as_deref(),
