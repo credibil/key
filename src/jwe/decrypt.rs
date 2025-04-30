@@ -1,11 +1,9 @@
 use std::fmt;
 use std::str::FromStr;
 
-use aes_gcm::aead::KeyInit; // heapless,
-use aes_gcm::{AeadInPlace, Aes256Gcm, Key, Nonce, Tag};
 use anyhow::{Result, anyhow};
 use base64ct::{Base64UrlUnpadded, Encoding};
-use credibil_ose::{PublicKey, Receiver, TAG_PUBKEY_FULL, derive_cek};
+use credibil_ose::{PublicKey, Receiver, TAG_PUBKEY_FULL};
 use serde::de::DeserializeOwned;
 
 use crate::jwe::{Header, Jwe, KeyEncryption, Protected, ProtectedFlat, Recipients};
@@ -65,8 +63,8 @@ where
             Base64UrlUnpadded::decode_vec(tag).map_err(|e| anyhow!("issue decoding `tag`: {e}"))
         })
         .transpose()?;
-    let cek = derive_cek(
-        &recipient.header.alg,
+
+    let cek = &recipient.header.alg.derive_cek(
         &shared_secret,
         Some(&encrypted_key),
         iv.as_deref(),
@@ -82,13 +80,8 @@ where
         .map_err(|e| anyhow!("issue decoding `aad`: {e}"))?;
     let ciphertext = Base64UrlUnpadded::decode_vec(&jwe.ciphertext)
         .map_err(|e| anyhow!("issue decoding `ciphertext`: {e}"))?;
-
-    // decrypt ciphertext using CEK, iv, aad, and tag
-    let mut buffer = ciphertext;
-
-    Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&cek))
-        .decrypt_in_place_detached(Nonce::from_slice(&iv), &aad, &mut buffer, Tag::from_slice(&tag))
-        .map_err(|e| anyhow!("issue decrypting: {e}"))?;
+    let enc = &jwe.protected.enc;
+    let buffer = enc.decrypt(&ciphertext, cek, &iv, &aad, &tag)?;
 
     Ok(serde_json::from_slice(&buffer)?)
 }

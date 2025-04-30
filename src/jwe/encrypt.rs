@@ -2,22 +2,18 @@
 
 use aes_gcm::aead::KeyInit;
 use aes_gcm::{AeadCore, AeadInPlace, Aes256Gcm};
-// use aes_gcm::aes::cipher::consts::U12;
 use aes_kw::Kek;
 use anyhow::{Result, anyhow};
 use base64ct::{Base64UrlUnpadded, Encoding};
 use chacha20poly1305::XChaCha20Poly1305;
-use credibil_ose::{Curve, KeyType};
-// use ecies::consts::{AEAD_TAG_LENGTH, NONCE_LENGTH, UNCOMPRESSED_PUBLIC_KEY_SIZE};
+use credibil_ose::{AlgAlgorithm, Curve, EncAlgorithm, KeyType, PublicKey};
 use ed25519_dalek::PUBLIC_KEY_LENGTH;
 use rand::rngs::OsRng;
 use serde::Serialize;
 use x25519_dalek::EphemeralSecret;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use crate::jwe::{
-    AlgAlgorithm, EncAlgorithm, Header, Jwe, KeyEncryption, Protected, PublicKey, Recipients,
-};
+use crate::jwe::{Header, Jwe, KeyEncryption, Protected, Recipients};
 use crate::jwk::PublicKeyJwk;
 
 /// Builds a JWE object using provided options.
