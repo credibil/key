@@ -249,8 +249,7 @@ pub enum Zip {
 
 #[cfg(test)]
 mod test {
-    use credibil_ose::{SecretKey, SharedSecret};
-    use ed25519_dalek::PUBLIC_KEY_LENGTH;
+    use credibil_ose::{PUBLIC_KEY_LENGTH, SecretKey, SharedSecret};
     use rand::rngs::OsRng;
     use sha2::Digest;
 

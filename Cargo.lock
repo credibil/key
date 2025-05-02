@@ -225,7 +225,7 @@ dependencies = [
 
 [[package]]
 name = "credibil-ose"
-version = "0.1.2"
+version = "0.1.0"
 dependencies = [
  "aes-gcm",
  "aes-kw",
