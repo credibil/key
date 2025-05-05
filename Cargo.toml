@@ -51,3 +51,5 @@ hex = "0.4.3"
 sha2 = "0.10.8"
 signature = "2.2.0"
 tokio = { version = "1.44.1", features = ["macros", "rt-multi-thread"] }
+test-kms = { path = "../ose/crates/test-kms" }
+# test-kms = { git = "https://github.com/credibil/ose.git" }
