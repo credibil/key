@@ -28,11 +28,7 @@ nursery = "warn"
 [dependencies]
 anyhow = "1.0.98"
 base64ct = { version = "1.7.3", features = ["std"] }
-# credibil-ose = { git = "https://github.com/credibil/ose.git" }
-credibil-ose = { path = "../ose" }
-ecdsa = "0.16.9"
-ed25519-dalek = { version = "2.1.1", features = ["rand_core"] }
-k256 = "0.13.4"
+credibil-ose = { git = "https://github.com/credibil/ose.git" }
 multibase = "0.9.1"
 rand = "0.8.5"
 serde = { version = "1.0.219", features = ["derive"] }
@@ -43,7 +39,6 @@ zeroize = "1.8.1"
 
 [dev-dependencies]
 hex = "0.4.3"
-signature = "2.2.0"
 tokio = { version = "1.44.1", features = ["macros", "rt-multi-thread"] }
-test-kms = { path = "../ose/crates/test-kms" }
-# test-kms = { git = "https://github.com/credibil/ose.git" }
+# test-kms = { path = "../ose/crates/test-kms" }
+test-kms = { git = "https://github.com/credibil/ose.git" }
