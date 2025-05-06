@@ -438,7 +438,7 @@ where
         };
 
         let protected = Protected {
-            alg: signer.algorithm(),
+            alg: signer.algorithm().await?,
             typ: self.typ,
             key: self.key.0,
             ..Protected::default()
