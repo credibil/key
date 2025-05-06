@@ -15,7 +15,6 @@ use std::str::FromStr;
 use anyhow::{Result, anyhow, bail};
 use base64ct::{Base64UrlUnpadded, Encoding};
 use credibil_ose::{Algorithm, Curve, Signer};
-use ecdsa::signature::Verifier as _;
 use serde::{Deserialize, Serialize};
 
 use crate::KeyBinding;
@@ -310,38 +309,22 @@ impl PublicKeyJwk {
 
     // Verify the signature of the provided message using the ES256K algorithm.
     fn verify_es256k(&self, msg: &[u8], sig: &[u8]) -> Result<()> {
-        use ecdsa::{Signature, VerifyingKey};
-        use k256::Secp256k1;
-
         // build verifying key
         let y = self.y.as_ref().ok_or_else(|| anyhow!("Proof JWT 'y' is invalid"))?;
         let mut sec1 = vec![0x04]; // uncompressed format
         sec1.append(&mut Base64UrlUnpadded::decode_vec(&self.x)?);
         sec1.append(&mut Base64UrlUnpadded::decode_vec(y)?);
 
-        let verifying_key = VerifyingKey::<Secp256k1>::from_sec1_bytes(&sec1)?;
-        let signature: Signature<Secp256k1> = Signature::from_slice(sig)?;
-        let normalised = signature.normalize_s().unwrap_or(signature);
-
-        Ok(verifying_key.verify(msg, &normalised)?)
+        Algorithm::ES256K.verify(msg, sig, &sec1)
     }
 
     // Verify the signature of the provided message using the EdDSA algorithm.
     fn verify_eddsa(&self, msg: &[u8], sig_bytes: &[u8]) -> Result<()> {
-        use ed25519_dalek::{Signature, VerifyingKey};
-
         // build verifying key
         let x_bytes = Base64UrlUnpadded::decode_vec(&self.x)
             .map_err(|e| anyhow!("unable to base64 decode proof JWK 'x': {e}"))?;
-        let bytes = &x_bytes.try_into().map_err(|_| anyhow!("invalid public key length"))?;
-        let verifying_key = VerifyingKey::from_bytes(bytes)
-            .map_err(|e| anyhow!("unable to build verifying key: {e}"))?;
-        let signature = Signature::from_slice(sig_bytes)
-            .map_err(|e| anyhow!("unable to build signature: {e}"))?;
 
-        verifying_key
-            .verify(msg, &signature)
-            .map_err(|e| anyhow!("unable to verify signature: {e}"))
+        Algorithm::EdDSA.verify(msg, sig_bytes, &x_bytes)
     }
 }
 
