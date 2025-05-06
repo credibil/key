@@ -249,8 +249,7 @@ pub enum Zip {
 
 #[cfg(test)]
 mod test {
-    use credibil_ose::{Curve, PUBLIC_KEY_LENGTH, SecretKey, SharedSecret};
-    use sha2::Digest;
+    use credibil_ose::Curve;
     use test_kms::{Keyring, KeyringReceiver};
 
     use super::*;
@@ -350,44 +349,13 @@ mod test {
         assert_eq!(plaintext, decrypted);
     }
 
-    // derive X25519 keypair from Ed25519 keypair (reverse of XEdDSA)
-    // XEdDSA resources:
-    // - https://signal.org/docs/specifications/xeddsa
-    // - https://github.com/Zentro/lambx
-    // - https://codeberg.org/SpotNuts/xeddsa
-    #[test]
-    fn edx25519() {
-        const ALICE_SECRET: &str = "8rmFFiUcTjjrL5mgBzWykaH39D64VD0mbDHwILvsu30";
-        const ALICE_PUBLIC: &str = "RW-Q0fO2oECyLs4rZDZZo4p6b7pu7UF2eu9JBsktDco";
-
-        let alice_secret: [u8; PUBLIC_KEY_LENGTH] =
-            Base64UrlUnpadded::decode_vec(ALICE_SECRET).unwrap().try_into().unwrap();
-        let alice_public: [u8; PUBLIC_KEY_LENGTH] =
-            Base64UrlUnpadded::decode_vec(ALICE_PUBLIC).unwrap().try_into().unwrap();
-
-        let ephemeral_secret = x25519_dalek::EphemeralSecret::random_from_rng(rand::thread_rng());
-        let ephemeral_public = x25519_dalek::PublicKey::from(&ephemeral_secret);
-
-        // SENDER: diffie-hellman using Alice public -> montgomery
-        let alice_verifier = ed25519_dalek::VerifyingKey::from_bytes(&alice_public).unwrap();
-        let alice_montgomery = alice_verifier.to_montgomery();
-        let ephemeral_dh = ephemeral_secret.diffie_hellman(&alice_montgomery.to_bytes().into());
-
-        // RECEIVER: diffie-hellman using ephemeral public
-        let hash = sha2::Sha512::digest(&alice_secret);
-        let mut hashed = [0u8; PUBLIC_KEY_LENGTH];
-        hashed.copy_from_slice(&hash[..PUBLIC_KEY_LENGTH]);
-        let alice_x_secret = x25519_dalek::StaticSecret::from(hashed);
-        let alice_dh = alice_x_secret.diffie_hellman(&ephemeral_public);
-
-        assert_eq!(ephemeral_dh.as_bytes(), alice_dh.as_bytes());
-    }
-
     #[tokio::test]
     async fn ecies_es256k() {
-        let key_store = Es256k::new();
+        let mut key_store = Keyring::new().await.expect("create keyring");
+        key_store.add(&Curve::Es256K, "did:example:alice#key-id").await.expect("add key");
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
-        let public_key = PublicKey::from(key_store.public_key);
+        let public_key =
+            key_store.public_key("did:example:alice#key-id").await.expect("get public key");
 
         let jwe = JweBuilder::new()
             .content_algorithm(EncAlgorithm::A256Gcm)
@@ -397,36 +365,8 @@ mod test {
             .build()
             .expect("should encrypt");
 
-        let decrypted: String = decrypt(&jwe, &key_store).await.expect("should decrypt");
+        let receiver = KeyringReceiver::new("did:example:alice#key-id", key_store.clone());
+        let decrypted: String = decrypt(&jwe, &receiver).await.expect("should decrypt");
         assert_eq!(plaintext, decrypted);
-    }
-
-
-    // Basic key store for testing
-    struct Es256k {
-        public_key: ecies::PublicKey,
-        secret_key: ecies::SecretKey,
-    }
-
-    impl Es256k {
-        fn new() -> Self {
-            let (secret_key, public_key) = ecies::utils::generate_keypair();
-            Self {
-                public_key,
-                secret_key,
-            }
-        }
-    }
-
-    impl Receiver for Es256k {
-        fn key_id(&self) -> String {
-            "did:example:alice#key-id".to_string()
-        }
-
-        async fn shared_secret(&self, sender_public: PublicKey) -> Result<SharedSecret> {
-            let secret: [u8; PUBLIC_KEY_LENGTH] = self.secret_key.serialize();
-            let secret_key = SecretKey::try_from(secret).expect("should convert");
-            secret_key.shared_secret(sender_public)
-        }
     }
 }

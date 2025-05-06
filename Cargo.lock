@@ -327,14 +327,10 @@ dependencies = [
 name = "credibil-jose"
 version = "0.1.2"
 dependencies = [
- "aes-gcm",
- "aes-kw",
  "anyhow",
  "base64ct",
- "chacha20poly1305",
  "credibil-ose",
  "ecdsa",
- "ecies",
  "ed25519-dalek",
  "hex",
  "k256",
@@ -343,12 +339,10 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_repr",
- "sha2",
  "signature",
  "test-kms",
  "tokio",
  "tracing",
- "x25519-dalek",
  "zeroize",
 ]
 
@@ -1351,6 +1345,7 @@ dependencies = [
  "multihash-codetable",
  "rand",
  "serde",
+ "sha2",
  "x25519-dalek",
 ]
 
