@@ -27,7 +27,7 @@
 
 use anyhow::{Result, anyhow};
 use base64ct::{Base64UrlUnpadded, Encoding};
-use credibil_ose::{AlgAlgorithm, Curve, KeyType, ED25519_CODEC, X25519_CODEC};
+use credibil_se::{AlgAlgorithm, Curve, KeyType, ED25519_CODEC, X25519_CODEC};
 use multibase::Base;
 use serde::{Deserialize, Serialize};
 

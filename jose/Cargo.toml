@@ -16,29 +16,23 @@ version = "0.1.2"
 [lib]
 # crate-type = ["cdylib", "rlib"]
 
-[lints.rust]
-missing_docs = "warn"
-unused_extern_crates = "warn"
-
-[lints.clippy]
-all = "warn"
-pedantic = "warn"
-nursery = "warn"
+[lints]
+workspace = true
 
 [dependencies]
 anyhow = "1.0.98"
-base64ct = { version = "1.7.3", features = ["std"] }
-credibil-ose = { git = "https://github.com/credibil/ose.git" }
-multibase = "0.9.1"
-rand = "0.8.5"
-serde = { version = "1.0.219", features = ["derive"] }
-serde_json = { version = "1.0.140", features = ["alloc"] }
-serde_repr = "0.1"
-tracing = "0.1.41"
-zeroize = "1.8.1"
+base64ct.workspace = true
+credibil-se.workspace = true
+multibase.workspace = true
+rand.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_repr.workspace = true
+tracing.workspace = true
+zeroize.workspace = true
 
 [dev-dependencies]
 hex = "0.4.3"
-tokio = { version = "1.44.1", features = ["macros", "rt-multi-thread"] }
+tokio.workspace = true
 # test-kms = { path = "../ose/crates/test-kms" }
-test-kms = { git = "https://github.com/credibil/ose.git" }
+test-kms.workspace = true

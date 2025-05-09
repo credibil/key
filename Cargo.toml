@@ -1,6 +1,8 @@
 [workspace]
 members = [
     "jose",
+    "se",
+    "crates/*",
 ]
 resolver = "3"
 
@@ -29,12 +31,13 @@ nursery = "warn"
 [workspace.dependencies]
 anyhow = "1.0.98"
 base64ct = { version = "1.7.3", features = ["std"] }
-credibil-ose = { git = "https://github.com/credibil/ose.git" }
+credibil-se = { path = "se" }
 multibase = "0.9.1"
 rand = "0.8.5"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = { version = "1.0.140", features = ["alloc"] }
 serde_repr = "0.1"
-test-kms = { git = "https://github.com/credibil/ose.git" }
+test-kms = { path = "crates/test-kms" }
+tokio = { version = "1.44.2", features = ["macros", "rt-multi-thread"] }
 tracing = "0.1.41"
 zeroize = "1.8.1"

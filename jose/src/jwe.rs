@@ -52,7 +52,7 @@ mod encrypt;
 
 use anyhow::{Result, bail};
 use base64ct::{Base64UrlUnpadded, Encoding};
-use credibil_ose::{AlgAlgorithm, EncAlgorithm, PublicKey, Receiver};
+use credibil_se::{AlgAlgorithm, EncAlgorithm, PublicKey, Receiver};
 use encrypt::JweBuilder;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -249,7 +249,7 @@ pub enum Zip {
 
 #[cfg(test)]
 mod test {
-    use credibil_ose::Curve;
+    use credibil_se::Curve;
     use test_kms::{Keyring, KeyringReceiver};
 
     use super::*;
@@ -257,7 +257,7 @@ mod test {
     // Use top-level encrypt method to shortcut using the builder
     #[tokio::test]
     async fn simple() {
-        let mut key_store = Keyring::new().await.expect("create keyring");
+        let mut key_store = Keyring::new("simple").await.expect("create keyring");
         key_store.add(&Curve::X25519, "encription-key-1").await.expect("add key");
 
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
@@ -272,7 +272,7 @@ mod test {
     // Compact serialization/deserialization
     #[tokio::test]
     async fn compact() {
-        let mut key_store = Keyring::new().await.expect("create keyring");
+        let mut key_store = Keyring::new("compact").await.expect("create keyring");
         key_store.add(&Curve::X25519, "encription-key-1").await.expect("add key");
 
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
@@ -291,7 +291,7 @@ mod test {
     // round trip: encrypt and then decrypt
     #[tokio::test]
     async fn default() {
-        let mut key_store = Keyring::new().await.expect("create keyring");
+        let mut key_store = Keyring::new("default").await.expect("create keyring");
         key_store.add(&Curve::X25519, "encription-key-1").await.expect("add key");
 
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
@@ -310,7 +310,7 @@ mod test {
 
     #[tokio::test]
     async fn ecdh_es_a256kw() {
-        let mut key_store = Keyring::new().await.expect("create keyring");
+        let mut key_store = Keyring::new("ecdh_es_a256kw").await.expect("create keyring");
         key_store.add(&Curve::X25519, "did:example:alice#key-id").await.expect("add key");
 
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
@@ -332,7 +332,7 @@ mod test {
 
     #[tokio::test]
     async fn ed25519() {
-        let mut key_store = Keyring::new().await.expect("create keyring");
+        let mut key_store = Keyring::new("ed25519").await.expect("create keyring");
         key_store.add(&Curve::Ed25519, "did:example:alice#key-id").await.expect("add key");
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
         let public_key =
@@ -351,7 +351,7 @@ mod test {
 
     #[tokio::test]
     async fn ecies_es256k() {
-        let mut key_store = Keyring::new().await.expect("create keyring");
+        let mut key_store = Keyring::new("ecies_es256k").await.expect("create keyring");
         key_store.add(&Curve::Es256K, "did:example:alice#key-id").await.expect("add key");
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
         let public_key =

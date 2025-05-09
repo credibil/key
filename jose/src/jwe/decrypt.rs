@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 use anyhow::{Result, anyhow};
 use base64ct::{Base64UrlUnpadded, Encoding};
-use credibil_ose::{PublicKey, Receiver, TAG_PUBKEY_FULL};
+use credibil_se::{PublicKey, Receiver, TAG_PUBKEY_FULL};
 use serde::de::DeserializeOwned;
 
 use crate::jwe::{Header, Jwe, KeyEncryption, Protected, ProtectedFlat, Recipients};

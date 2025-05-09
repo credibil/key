@@ -329,7 +329,7 @@ version = "0.1.2"
 dependencies = [
  "anyhow",
  "base64ct",
- "credibil-ose",
+ "credibil-se",
  "hex",
  "multibase",
  "rand",
@@ -343,9 +343,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "credibil-ose"
-version = "0.1.0"
-source = "git+https://github.com/credibil/ose.git#7da8e28d23d7a57f7cba01abde9452636caf06d8"
+name = "credibil-se"
+version = "0.1.2"
 dependencies = [
  "aes-gcm",
  "aes-kw",
@@ -355,6 +354,7 @@ dependencies = [
  "ecdsa",
  "ecies",
  "ed25519-dalek",
+ "hex",
  "k256",
  "multibase",
  "p256",
@@ -362,6 +362,9 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_repr",
+ "sha2",
+ "signature",
+ "tokio",
  "tracing",
  "x25519-dalek",
  "zeroize",
@@ -1330,20 +1333,20 @@ dependencies = [
 
 [[package]]
 name = "test-kms"
-version = "0.1.0"
-source = "git+https://github.com/credibil/ose.git#7da8e28d23d7a57f7cba01abde9452636caf06d8"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "blockstore",
  "ciborium",
  "cid",
- "credibil-ose",
+ "credibil-se",
  "ecies",
  "ed25519-dalek",
  "multihash-codetable",
  "rand",
  "serde",
  "sha2",
+ "tokio",
  "x25519-dalek",
 ]
 
