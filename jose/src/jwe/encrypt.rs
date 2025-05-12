@@ -117,6 +117,8 @@ impl<T: Serialize + Send> JweBuilder<Payload<T>> {
             .recipients(recipients)
             .build()?;
 
+        println!(">> JweBuilder::build: key_encrypter: {key_encrypter:?}");
+
         // encrypt content
         let protected = Protected {
             enc: self.content_algorithm.clone(),
@@ -127,7 +129,7 @@ impl<T: Serialize + Send> JweBuilder<Payload<T>> {
         let payload = serde_json::to_vec(&self.payload.0)?;
         let encrypted = self.content_algorithm.encrypt(&payload, &key_encrypter.cek, &aad)?;
 
-        Ok(Jwe {
+        let jwe = Jwe {
             protected,
             recipients: key_encrypter.recipients.clone(),
             aad: Base64UrlUnpadded::encode_string(&aad),
@@ -135,7 +137,9 @@ impl<T: Serialize + Send> JweBuilder<Payload<T>> {
             tag: Base64UrlUnpadded::encode_string(&encrypted.tag),
             ciphertext: Base64UrlUnpadded::encode_string(&encrypted.ciphertext),
             ..Jwe::default()
-        })
+        };
+        println!(">> JweBuilder::build: jwe: {jwe:?}");
+        Ok(jwe)
     }
 }
 
@@ -190,7 +194,7 @@ impl KeyEncrypterBuilder {
                         epk: PublicKeyJwk {
                             kty: KeyType::Okp,
                             crv: Curve::Ed25519,
-                            x: Base64UrlUnpadded::encode_string(&ephemeral_public),
+                            x: Base64UrlUnpadded::encode_string(&ephemeral_public.to_bytes()),
                             ..PublicKeyJwk::default()
                         },
                         ..Header::default()
@@ -229,7 +233,7 @@ impl KeyEncrypterBuilder {
 }
 
 // Key encryption material for the JWE.
-#[derive(Zeroize, ZeroizeOnDrop)]
+#[derive(Debug, Zeroize, ZeroizeOnDrop)]
 struct KeyEncrypter {
     pub cek: [u8; PUBLIC_KEY_LENGTH],
     #[zeroize(skip)]
