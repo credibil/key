@@ -104,7 +104,7 @@ impl Display for EncAlgorithm {
         write!(f, "{self:?}")
     }
 }
- 
+
 impl EncAlgorithm {
     /// Decrypt a ciphertext using the content encryption key (CEK) and the
     /// initialization vector (IV) and authentication tag.
@@ -247,13 +247,26 @@ impl AlgAlgorithm {
 
     /// Generate a content encryption key (CEK) using the key encryption
     /// algorithm.
+    ///
+    /// The first return value if the CEK and the second return value is an
+    /// ephemeral public key if supported by the algorithm (if will be empty if
+    /// not)
     #[must_use]
-    pub fn generate(&self) -> [u8; PUBLIC_KEY_LENGTH] {
+    pub fn generate_cek(
+        &self, recipient_key: &PublicKey
+    ) -> ([u8; PUBLIC_KEY_LENGTH], [u8; PUBLIC_KEY_LENGTH]) {
         match self {
-            Self::EcdhEs => [0; PUBLIC_KEY_LENGTH],
+            Self::EcdhEs => {
+                let ephemeral_secret = EphemeralSecret::random_from_rng(rand::thread_rng());
+                let ephemeral_public = x25519_dalek::PublicKey::from(&ephemeral_secret).to_bytes();
+                let recipient_public_key = x25519_dalek::PublicKey::from(*recipient_key);
+                let cek = ephemeral_secret.diffie_hellman(&recipient_public_key).to_bytes();
+                (cek, ephemeral_public)
+            },
             Self::EcdhEsA256Kw | Self::EciesEs256K => {
-                Aes256Gcm::generate_key(&mut rand::thread_rng()).into()
-            }
+                let cek = Aes256Gcm::generate_key(&mut rand::thread_rng());
+                (cek.into(), [0; PUBLIC_KEY_LENGTH])
+            },
         }
     }
 

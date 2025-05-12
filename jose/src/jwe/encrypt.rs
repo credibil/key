@@ -1,8 +1,8 @@
 //! # JWE Builder
 
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, bail};
 use base64ct::{Base64UrlUnpadded, Encoding};
-use credibil_se::{AlgAlgorithm, Curve, EncAlgorithm, KeyType, PublicKey, PUBLIC_KEY_LENGTH};
+use credibil_se::{AlgAlgorithm, Curve, EncAlgorithm, KeyType, PUBLIC_KEY_LENGTH, PublicKey};
 use serde::Serialize;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -31,6 +31,7 @@ pub struct NoPayload;
 pub struct Payload<T: Serialize + Send>(T);
 
 /// Recipient information required when generating a JWE.
+#[derive(Clone, Debug)]
 pub struct Recipient {
     /// The fully qualified key ID (e.g. did:example:abc#encryption-key-id) of
     /// the public key to be used to encrypt the content encryption key (CEK).
@@ -111,16 +112,10 @@ impl<T: Serialize + Send> JweBuilder<Payload<T>> {
 
         // generate CEK and encrypt for each recipient
         let recipients = self.recipients.as_slice();
-        let key_encrypter: &dyn KeyEncypter = match self.key_algorithm {
-            AlgAlgorithm::EcdhEs => {
-                if recipients.len() != 1 {
-                    return Err(anyhow!("ECDH-ES requires a single recipient"));
-                }
-                &EcdhEs::try_from(&recipients[0])?
-            }
-            AlgAlgorithm::EcdhEsA256Kw => &EcdhEsA256Kw::from(recipients),
-            AlgAlgorithm::EciesEs256K => &EciesEs256K::from(recipients),
-        };
+        let key_encrypter = KeyEncrypterBuilder::new()
+            .key_algorithm(self.key_algorithm)
+            .recipients(recipients)
+            .build()?;
 
         // encrypt content
         let protected = Protected {
@@ -130,15 +125,11 @@ impl<T: Serialize + Send> JweBuilder<Payload<T>> {
         let aad = serde_json::to_vec(&protected)?;
 
         let payload = serde_json::to_vec(&self.payload.0)?;
-        let encrypted = self.content_algorithm.encrypt(
-            &payload,
-            &key_encrypter.cek(),
-            &aad,
-        )?;
+        let encrypted = self.content_algorithm.encrypt(&payload, &key_encrypter.cek, &aad)?;
 
         Ok(Jwe {
             protected,
-            recipients: key_encrypter.recipients()?,
+            recipients: key_encrypter.recipients.clone(),
             aad: Base64UrlUnpadded::encode_string(&aad),
             iv: Base64UrlUnpadded::encode_string(&encrypted.iv),
             tag: Base64UrlUnpadded::encode_string(&encrypted.tag),
@@ -148,136 +139,101 @@ impl<T: Serialize + Send> JweBuilder<Payload<T>> {
     }
 }
 
-// Trait to accommodate for differences in the way key encryption is handled for
-// each Key Management Algorithm ("alg" parameter).
-trait KeyEncypter {
-    // Generate a Content Encryption Key (CEK) for the JWE.
-    fn cek(&self) -> [u8; PUBLIC_KEY_LENGTH];
-
-    // Generate the key encryption material for the JWE recipients.
-    fn recipients(&self) -> Result<Recipients>;
+// Key encryption builder.
+struct KeyEncrypterBuilder {
+    alg: AlgAlgorithm,
+    recipients: Vec<Recipient>,
 }
 
-// ----------------
-// ECDH-ES
-// ----------------
-#[derive(Zeroize, ZeroizeOnDrop)]
-struct EcdhEs {
-    ephemeral_public: [u8; PUBLIC_KEY_LENGTH],
-    cek: [u8; PUBLIC_KEY_LENGTH],
-}
-
-impl TryFrom<&Recipient> for EcdhEs {
-    type Error = anyhow::Error;
-    fn try_from(recipient: &Recipient) -> Result<Self, Self::Error> {
-        let init_cek = AlgAlgorithm::EcdhEs.generate();
-        let enc_cek = AlgAlgorithm::EcdhEs.encrypt(
-            &init_cek,
-            &recipient.public_key,
-        )?;
-
-        if enc_cek.encrypted_key.len() != PUBLIC_KEY_LENGTH {
-            return Err(anyhow!("unexpected encrypted key length"));
-        }
-        let mut cek_bytes = [0; PUBLIC_KEY_LENGTH];
-        cek_bytes.copy_from_slice(&enc_cek.encrypted_key);
-
-        Ok(Self {
-            ephemeral_public: enc_cek.ephemeral_public.to_bytes(),
-            cek: cek_bytes,
-        })
-    }
-}
-
-impl KeyEncypter for EcdhEs {
-    fn cek(&self) -> [u8; PUBLIC_KEY_LENGTH] {
-        self.cek
-    }
-
-    fn recipients(&self) -> Result<Recipients> {
-        let key_encryption = KeyEncryption {
-            header: Header {
-                alg: AlgAlgorithm::EcdhEs,
-                kid: None,
-                epk: PublicKeyJwk {
-                    kty: KeyType::Okp,
-                    crv: Curve::Ed25519,
-                    x: Base64UrlUnpadded::encode_string(&self.ephemeral_public),
-                    ..PublicKeyJwk::default()
-                },
-                ..Header::default()
-            },
-            encrypted_key: Base64UrlUnpadded::encode_string(&[0; PUBLIC_KEY_LENGTH]),
-        };
-
-        Ok(Recipients::One(key_encryption))
-    }
-}
-
-// ----------------
-// ECDH-ES+A256KW
-// ----------------
-#[derive(Zeroize, ZeroizeOnDrop)]
-struct EcdhEsA256Kw<'a> {
-    #[zeroize(skip)]
-    recipients: &'a [Recipient],
-    cek: [u8; PUBLIC_KEY_LENGTH],
-}
-
-impl<'a> From<&'a [Recipient]> for EcdhEsA256Kw<'a> {
-    fn from(recipients: &'a [Recipient]) -> Self {
+impl KeyEncrypterBuilder {
+    // Create a new key encryption builder.
+    #[must_use]
+    pub fn new() -> Self {
         Self {
-            recipients,
-            cek: AlgAlgorithm::EcdhEsA256Kw.generate(),
+            alg: AlgAlgorithm::default(),
+            recipients: vec![],
+        }
+    }
+
+    // Set the key encryption algorithm.
+    #[must_use]
+    pub const fn key_algorithm(mut self, algorithm: AlgAlgorithm) -> Self {
+        self.alg = algorithm;
+        self
+    }
+
+    // Add recipient public keys.
+    #[must_use]
+    pub fn recipients(mut self, recipients: &[Recipient]) -> Self {
+        for recipient in recipients {
+            self.recipients.push(recipient.clone());
+        }
+        self
+    }
+
+    // Build the key encryption material.
+    pub fn build(self) -> Result<KeyEncrypter> {
+        if self.recipients.is_empty() {
+            return Err(anyhow!("no recipients set"));
+        }
+        match self.alg {
+            AlgAlgorithm::EcdhEs => {
+                if self.recipients.len() != 1 {
+                    bail!("ECDH-ES requires a single recipient");
+                }
+                let (cek, ephemeral_public) =
+                    AlgAlgorithm::EcdhEs.generate_cek(&self.recipients[0].public_key);
+                let key_encryption = KeyEncryption {
+                    header: Header {
+                        alg: AlgAlgorithm::EcdhEs,
+                        kid: None,
+                        epk: PublicKeyJwk {
+                            kty: KeyType::Okp,
+                            crv: Curve::Ed25519,
+                            x: Base64UrlUnpadded::encode_string(&ephemeral_public),
+                            ..PublicKeyJwk::default()
+                        },
+                        ..Header::default()
+                    },
+                    encrypted_key: Base64UrlUnpadded::encode_string(&[0; PUBLIC_KEY_LENGTH]),
+                };
+                Ok(KeyEncrypter {
+                    cek,
+                    recipients: Recipients::One(key_encryption),
+                })
+            }
+            AlgAlgorithm::EcdhEsA256Kw => {
+                let (cek, _) = self.alg.generate_cek(&PublicKey::empty());
+                let mut recipients = vec![];
+                for recipient in &self.recipients {
+                    recipients.push(ecdh_a256kw(&cek, recipient)?);
+                }
+                Ok(KeyEncrypter {
+                    cek,
+                    recipients: Recipients::Many { recipients },
+                })
+            }
+            AlgAlgorithm::EciesEs256K => {
+                let (cek, _) = self.alg.generate_cek(&PublicKey::empty());
+                let mut recipients = vec![];
+                for recipient in &self.recipients {
+                    recipients.push(ecies_es256k(&cek, recipient)?);
+                }
+                Ok(KeyEncrypter {
+                    cek,
+                    recipients: Recipients::Many { recipients },
+                })
+            }
         }
     }
 }
 
-impl KeyEncypter for EcdhEsA256Kw<'_> {
-    fn cek(&self) -> [u8; PUBLIC_KEY_LENGTH] {
-        self.cek
-    }
-
-    fn recipients(&self) -> Result<Recipients> {
-        let mut recipients = vec![];
-        for r in self.recipients {
-            recipients.push(ecdh_a256kw(&self.cek, r)?);
-        }
-        Ok(Recipients::Many { recipients })
-    }
-}
-
-// ----------------
-// ECIES-ES256K (example code only)
-// ----------------
+// Key encryption material for the JWE.
 #[derive(Zeroize, ZeroizeOnDrop)]
-struct EciesEs256K<'a> {
+struct KeyEncrypter {
+    pub cek: [u8; PUBLIC_KEY_LENGTH],
     #[zeroize(skip)]
-    recipients: &'a [Recipient],
-    cek: [u8; PUBLIC_KEY_LENGTH],
-}
-
-impl<'a> From<&'a [Recipient]> for EciesEs256K<'a> {
-    fn from(recipients: &'a [Recipient]) -> Self {
-        Self {
-            recipients,
-            cek: AlgAlgorithm::EciesEs256K.generate(),
-        }
-    }
-}
-
-impl KeyEncypter for EciesEs256K<'_> {
-    fn cek(&self) -> [u8; PUBLIC_KEY_LENGTH] {
-        self.cek
-    }
-
-    fn recipients(&self) -> Result<Recipients> {
-        let mut recipients = vec![];
-        for r in self.recipients {
-            recipients.push(ecies_es256k(&self.cek, r)?);
-        }
-        Ok(Recipients::Many { recipients })
-    }
+    pub recipients: Recipients,
 }
 
 /// Encrypt the content encryption key (CEK)for the specified recipient using
@@ -286,10 +242,7 @@ impl KeyEncypter for EciesEs256K<'_> {
 /// # Errors
 /// LATER: add error docs
 pub fn ecdh_a256kw(cek: &[u8; PUBLIC_KEY_LENGTH], recipient: &Recipient) -> Result<KeyEncryption> {
-    let enc_cek = AlgAlgorithm::EcdhEsA256Kw.encrypt(
-        cek,
-        &recipient.public_key,
-    )?;
+    let enc_cek = AlgAlgorithm::EcdhEsA256Kw.encrypt(cek, &recipient.public_key)?;
     Ok(KeyEncryption {
         header: Header {
             alg: AlgAlgorithm::EcdhEsA256Kw,
@@ -312,10 +265,7 @@ pub fn ecdh_a256kw(cek: &[u8; PUBLIC_KEY_LENGTH], recipient: &Recipient) -> Resu
 /// # Errors
 /// LATER: add error docs
 pub fn ecies_es256k(cek: &[u8; PUBLIC_KEY_LENGTH], recipient: &Recipient) -> Result<KeyEncryption> {
-    let enc_cek = AlgAlgorithm::EciesEs256K.encrypt(
-        cek,
-        &recipient.public_key,
-    )?;
+    let enc_cek = AlgAlgorithm::EciesEs256K.encrypt(cek, &recipient.public_key)?;
 
     // Use to_vec to get the full long (65-byte) public key
     let ephemeral_public = enc_cek.ephemeral_public.to_vec();

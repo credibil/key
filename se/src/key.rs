@@ -138,6 +138,15 @@ impl PublicKey {
     pub fn from_slice(val: &[u8]) -> anyhow::Result<Self> {
         Self::try_from(val)
     }
+
+    /// Provide an empty public key.
+    #[must_use]
+    pub const fn empty() -> Self {
+        Self {
+            x: [0; 32],
+            y: None,
+        }
+    }
 }
 
 impl From<[u8; 32]> for PublicKey {
