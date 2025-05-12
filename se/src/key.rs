@@ -86,7 +86,7 @@ impl TryFrom<SecretKey> for ecies::SecretKey {
 }
 
 /// A shared secret key that can be used to encrypt and decrypt messages.
-#[derive(Zeroize, ZeroizeOnDrop)]
+#[derive(Debug, Zeroize, ZeroizeOnDrop)]
 pub struct SharedSecret([u8; 32]);
 
 impl SharedSecret {
@@ -104,7 +104,7 @@ impl SharedSecret {
 }
 
 /// The public key of the key pair used in encryption.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct PublicKey {
     x: [u8; 32],
     y: Option<[u8; 32]>,

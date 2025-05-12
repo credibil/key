@@ -81,6 +81,7 @@ where
     let ciphertext = Base64UrlUnpadded::decode_vec(&jwe.ciphertext)
         .map_err(|e| anyhow!("issue decoding `ciphertext`: {e}"))?;
     let enc = &jwe.protected.enc;
+        
     let buffer = enc.decrypt(&ciphertext, cek, &iv, &aad, &tag)?;
 
     Ok(serde_json::from_slice(&buffer)?)
