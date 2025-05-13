@@ -114,13 +114,6 @@ impl EncAlgorithm {
     pub fn decrypt(
         &self, ciphertext: &[u8], cek: &[u8], iv: &[u8], aad: &[u8], tag: &[u8],
     ) -> anyhow::Result<Vec<u8>> {
-        println!(">> EncAlgorithm::decrypt ciphertext: {ciphertext:?}");
-        println!(">> EncAlgorithm::decrypt cek: {cek:?}");
-        println!(">> EncAlgorithm::decrypt iv: {iv:?}");
-        println!(">> EncAlgorithm::decrypt aad: {aad:?}");
-        println!(">> EncAlgorithm::decrypt tag: {tag:?}");
-        println!(">> EncAlgorithm::decrypt enc: {self:?}");
-
         match self {
             Self::A256Gcm => {
                 let mut buffer = ciphertext.to_vec();
@@ -129,9 +122,6 @@ impl EncAlgorithm {
                 Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(cek))
                     .decrypt_in_place_detached(nonce, aad, &mut buffer, tag)
                     .map_err(|e| anyhow!("issue decrypting payload: {e}"))?;
-
-                println!(">> EncAlgorithm::decrypt buffer: {buffer:?}");
-
                 Ok(buffer)
             }
             Self::XChaCha20Poly1305 => {
@@ -149,11 +139,6 @@ impl EncAlgorithm {
     pub fn encrypt(
         &self, plaintext: &[u8], cek: &[u8; PUBLIC_KEY_LENGTH], aad: &[u8],
     ) -> anyhow::Result<Encrypted> {
-        println!(">> EncAlgorithm::encrypt plaintext: {plaintext:?}");
-        println!(">> EncAlgorithm::encrypt cek: {cek:?}");
-        println!(">> EncAlgorithm::encrypt aad: {aad:?}");
-        println!(">> EncAlgorithm::encrypt enc: {self:?}");
-
         let mut buffer = plaintext.to_vec();
         let (nonce, tag) = match self {
             Self::A256Gcm => {
@@ -171,10 +156,6 @@ impl EncAlgorithm {
                 (nonce.to_vec(), tag.to_vec())
             }
         };
-
-        println!(">> EncAlgorithm::encrypt ciphertext: {buffer:?}");
-        println!(">> EncAlgorithm::encrypt nonce: {nonce:?}");
-        println!(">> EncAlgorithm::encrypt tag: {tag:?}");
 
         Ok(Encrypted {
             iv: nonce,
@@ -229,17 +210,9 @@ impl AlgAlgorithm {
         &self, shared_secret: &SharedSecret, encrypted_key: Option<&[u8]>,
         init_vector: Option<&[u8]>, tag: Option<&[u8]>,
     ) -> anyhow::Result<Vec<u8>> {
-        println!(">> AlgAlgorithm::decrypt shared_secret: {shared_secret:?}");
-        println!(">> AlgAlgorithm::decrypt encrypted_key: {encrypted_key:?}");
-        println!(">> AlgAlgorithm::decrypt iv: {init_vector:?}");
-        println!(">> AlgAlgorithm::decrypt tag: {tag:?}");
-        println!(">> AlgAlgorithm::decrypt alg: {self:?}");
-
         match self {
             Self::EcdhEs => {
                 let decrypted_key = shared_secret.to_bytes().to_vec();
-                println!(">> AlgAlgorithm::decrypt decrypted_key: {decrypted_key:?}");
-
                 Ok(decrypted_key)
             }
             Self::EcdhEsA256Kw => {
@@ -250,8 +223,6 @@ impl AlgAlgorithm {
                 let decrypted_key = Kek::from(shared_secret.to_bytes())
                     .unwrap_vec(encrypted_key)
                     .map_err(|e| anyhow!("issue unwrapping cek: {e}"))?;
-                println!(">> AlgAlgorithm::decrypt decrypted_key: {decrypted_key:?}");
-
                 Ok(decrypted_key)
             }
             Self::EciesEs256K => {
@@ -272,9 +243,6 @@ impl AlgAlgorithm {
                 Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(shared_secret.as_bytes()))
                     .decrypt_in_place_detached(nonce, &[], &mut buffer, tag)
                     .map_err(|e| anyhow!("issue decrypting CEK: {e}"))?;
-
-                println!(">> AlgAlgorithm::decrypt decrypted_key: {buffer:?}");
-
                 Ok(buffer)
             }
         }
@@ -287,10 +255,10 @@ impl AlgAlgorithm {
     /// ephemeral public key if supported by the algorithm (if will be empty if
     /// not)
     /// 
-    /// TODO: Review this business logic to use x25519 vs Aes256Gcm. Does it
-    /// come from specification? Might be better to just have this function at
-    /// the top level (not in the enum) and the caller specifies an algorithm
-    /// to use for key generation.
+    // TODO: Review this business logic to use x25519 vs Aes256Gcm. Does it
+    // come from specification? Might be better to just have this function at
+    // the top level (not in the enum) and the caller specifies an algorithm
+    // to use for key generation.
     #[must_use]
     pub fn generate_cek(
         &self, recipient_key: &PublicKey,
@@ -317,11 +285,6 @@ impl AlgAlgorithm {
     pub fn encrypt(
         &self, cek: &[u8; PUBLIC_KEY_LENGTH], recipient_key: &PublicKey,
     ) -> anyhow::Result<EncryptedCek> {
-
-        println!(">> AlgAlgorithm::encrypt cek: {cek:?}");
-        println!(">> AlgAlgorithm::encrypt recipient_key: {recipient_key:?}");
-        println!(">> AlgAlgorithm::encrypt alg: {self:?}");
-
         match self {
             Self::EcdhEs => {
                 let ephemeral_secret = EphemeralSecret::random_from_rng(rand::thread_rng());
@@ -336,9 +299,6 @@ impl AlgAlgorithm {
                     iv: None,
                     tag: None,
                 };
-
-                println!(">> AlgAlgorithm::encrypt encrypted CEK: {enc_cek:?}");
-
                 Ok(enc_cek)
             }
             Self::EcdhEsA256Kw => {
@@ -357,9 +317,6 @@ impl AlgAlgorithm {
                     iv: None,
                     tag: None,
                 };
-
-                println!(">> AlgAlgorithm::encrypt encrypted CEK: {enc_cek:?}");
-
                 Ok(enc_cek)
             }
             Self::EciesEs256K => {
@@ -381,9 +338,6 @@ impl AlgAlgorithm {
                     iv: Some(iv.to_vec()),
                     tag: Some(tag.to_vec()),
                 };
-
-                println!(">> AlgAlgorithm::encrypt encrypted CEK: {enc_cek:?}");
-
                 Ok(enc_cek)
             }
         }

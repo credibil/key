@@ -18,9 +18,6 @@ pub async fn decrypt<T>(jwe: &Jwe, receiver: &impl Receiver) -> Result<T>
 where
     T: DeserializeOwned,
 {
-
-    println!(">> jwe::decrypt jwe: {jwe:?}");
-
     let recipient = match &jwe.recipients {
         Recipients::One(recipient) => recipient,
         Recipients::Many { recipients } => {
@@ -31,9 +28,6 @@ where
             found
         }
     };
-
-    println!(">> jwe::decrypt receiver.key_id(): {:?}", receiver.key_id());
-    println!(">> jwe::decrypt recipient: {recipient:?}");
 
     // get sender's ephemeral public key (used in key agreement)
     let mut public_key = Base64UrlUnpadded::decode_vec(&recipient.header.epk.x)
@@ -47,11 +41,9 @@ where
     }
 
     let sender_public = PublicKey::try_from(public_key)?;
-    println!(">> jwe::decrypt sender_public: {sender_public:?}");
 
     // derive shared_secret from recipient's private key and sender's public key
     let shared_secret = receiver.shared_secret(sender_public).await?;
-    println!(">> jwe::decrypt shared_secret: {shared_secret:?}");
 
     let encrypted_key = Base64UrlUnpadded::decode_vec(&recipient.encrypted_key)
         .map_err(|e| anyhow!("issue decoding `encrypted_key`: {e}"))?;
@@ -78,7 +70,6 @@ where
         iv.as_deref(),
         tag.as_deref(),
     )?;
-    println!(">> jwe::decrypt cek: {cek:?}");
 
     // unpack JWE
     let iv =
@@ -92,12 +83,7 @@ where
     let enc = &jwe.protected.enc;
         
     let buffer = enc.decrypt(&ciphertext, cek, &iv, &aad, &tag)?;
-    println!(">> jwe::decrypt result: {buffer:?}");
-
     let deserialized = serde_json::from_slice(&buffer)?;
-
-    println!(">> jwe::decrypt deserialized");
-
     Ok(deserialized)
 }
 

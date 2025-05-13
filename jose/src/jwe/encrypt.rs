@@ -117,8 +117,6 @@ impl<T: Serialize + Send> JweBuilder<Payload<T>> {
             .recipients(recipients)
             .build()?;
 
-        println!(">> JweBuilder::build: key_encrypter: {key_encrypter:?}");
-
         // encrypt content
         let protected = Protected {
             enc: self.content_algorithm.clone(),
@@ -138,7 +136,6 @@ impl<T: Serialize + Send> JweBuilder<Payload<T>> {
             ciphertext: Base64UrlUnpadded::encode_string(&encrypted.ciphertext),
             ..Jwe::default()
         };
-        println!(">> JweBuilder::build: jwe: {jwe:?}");
         Ok(jwe)
     }
 }
