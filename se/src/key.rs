@@ -2,7 +2,7 @@
 
 use anyhow::anyhow;
 use base64ct::{Base64UrlUnpadded, Encoding};
-use ed25519_dalek::VerifyingKey;
+use sha2::Digest;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::PUBLIC_KEY_LENGTH;
@@ -142,10 +142,7 @@ impl PublicKey {
     /// Provide an empty public key.
     #[must_use]
     pub const fn empty() -> Self {
-        Self {
-            x: [0; 32],
-            y: None,
-        }
+        Self { x: [0; 32], y: None }
     }
 }
 
@@ -248,15 +245,46 @@ impl TryFrom<PublicKey> for ecies::PublicKey {
     }
 }
 
-/// Derive a `X25519` public key from an `Ed25519` public key.
-/// 
+/// Derive an `X25519` public key from an `Ed25519` public key.
+///
 /// # Errors
 /// If the provided input is the wrong length or cannot be converted to an
 /// Ed25519 verifying key an error will be returned.
-pub fn derive_x25519(ed25519_pubkey: &[u8]) -> anyhow::Result<Vec<u8>> {
-    let verifier_bytes: [u8; PUBLIC_KEY_LENGTH] =
-        ed25519_pubkey.try_into().map_err(|_| anyhow!("unable to coerce vec to slice"))?;
-    let verifier = VerifyingKey::from_bytes(&verifier_bytes)?;
+pub fn derive_x25519_public(ed25519_pubkey: &PublicKey) -> anyhow::Result<PublicKey> {
+    let verifier_bytes: [u8; PUBLIC_KEY_LENGTH] = ed25519_pubkey.x;
+    let verifier = ed25519_dalek::VerifyingKey::from_bytes(&verifier_bytes)?;
     let x25519_bytes = verifier.to_montgomery().to_bytes();
-    Ok(x25519_bytes.to_vec())
+    PublicKey::from_slice(&x25519_bytes)
+}
+
+/// Derive an `X25519` shared secret from a static secret and an `Ed25519`
+/// public key.
+///
+/// # Errors
+/// If the provided input is the wrong length or cannot be inferred as an
+/// Ed25519 signing key an error will be returned.
+pub fn derive_x25519_secret(
+    secret: &[u8; PUBLIC_KEY_LENGTH], ed25519_pubkey: &PublicKey,
+) -> anyhow::Result<SharedSecret> {
+    // EdDSA signing key
+    let signing_key = ed25519_dalek::SigningKey::from_bytes(secret);
+
+    // derive X25519 secret for Diffie-Hellman from Ed25519 secret
+    let hash = sha2::Sha512::digest(signing_key.as_bytes());
+    let mut hashed = [0u8; PUBLIC_KEY_LENGTH];
+    hashed.copy_from_slice(&hash[..PUBLIC_KEY_LENGTH]);
+    let secret_key = x25519_dalek::StaticSecret::from(hashed);
+
+    let secret_key = SecretKey::from(secret_key.to_bytes());
+    secret_key.shared_secret(*ed25519_pubkey)
+}
+
+/// Derive an `X25519` public key from a static secret that is covertable to an
+/// `Ed25519` signing key.
+#[must_use]
+pub fn derive_x25519_public_from_secret(secret: &[u8; PUBLIC_KEY_LENGTH]) -> PublicKey {
+    let signing_key = ed25519_dalek::SigningKey::from_bytes(secret);
+    let derived_public =
+        x25519_dalek::PublicKey::from(signing_key.verifying_key().to_montgomery().to_bytes());
+    PublicKey::from(derived_public)
 }

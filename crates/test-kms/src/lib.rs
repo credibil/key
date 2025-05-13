@@ -280,7 +280,7 @@ impl Keyring {
     /// # Errors
     /// Will return an error if the requested key cannot be retrieved from
     /// storage or cannot be converted from the stored bytes.
-    pub(crate) async fn private_key(&self, id: impl ToString) -> anyhow::Result<SecretKey> {
+    pub async fn private_key(&self, id: impl ToString) -> anyhow::Result<SecretKey> {
         let stored_key = self
             .blockstore
             .get(&self.owner, "", &id.to_string())

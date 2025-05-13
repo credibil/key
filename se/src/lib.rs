@@ -15,7 +15,8 @@ use serde::{Deserialize, Serialize};
 pub use ed25519_dalek::PUBLIC_KEY_LENGTH;
 pub use encryption::{AlgAlgorithm, EncAlgorithm, Encrypted, EncryptedCek, Receiver};
 pub use key::{
-    ED25519_CODEC, MultiKey, PublicKey, SecretKey, SharedSecret, TAG_PUBKEY_FULL, X25519_CODEC, derive_x25519,
+    ED25519_CODEC, MultiKey, PublicKey, SecretKey, SharedSecret, TAG_PUBKEY_FULL, X25519_CODEC,
+    derive_x25519_public, derive_x25519_public_from_secret, derive_x25519_secret,
 };
 pub use signing::{Algorithm, Signer};
 
