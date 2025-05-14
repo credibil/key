@@ -162,6 +162,24 @@ impl Keyring {
         self.add(&existing.curve, id).await
     }
 
+    /// Add a key to the keyring with the the given ID (and its next key),
+    /// replacing any existing key with the same ID.
+    /// 
+    /// # Errors
+    /// Will return an error if the requested key cannot be added to the
+    /// underlying storage.
+    pub async fn add_or_replace(
+        &mut self,
+        curve: &Curve,
+        id: impl ToString,
+    ) -> anyhow::Result<()> {
+        if self.blockstore.exists(&self.owner, "", &id.to_string()).await? {
+            self.replace(id).await
+        } else {
+            self.add(curve, id).await
+        }
+    }
+
     /// Rotate all keys in the keyring.
     ///
     /// # Errors
@@ -477,8 +495,8 @@ impl KeyringReceiver {
 
 /// Receiver implementation for the keyring for encryption.
 impl Receiver for KeyringReceiver {
-    fn key_id(&self) -> String {
-        self.key_id.clone()
+    async fn key_id(&self) -> anyhow::Result<String> {
+        Ok(self.key_id.clone())
     }
 
     async fn shared_secret(&self, sender_public: PublicKey) -> anyhow::Result<SharedSecret> {
@@ -618,5 +636,16 @@ mod tests {
         assert_eq!(next_verifying_key1, verifying_key1);
         assert_eq!(next_verifying_key2, verifying_key2);
         assert_eq!(next_verifying_key3, verifying_key3);
+    }
+
+    // Test that key replacement results in a new key.
+    #[tokio::test]
+    async fn key_replacement() {
+        let mut keyring = Keyring::new("key_replacement").await.expect("keyring created");
+        keyring.add(&Curve::Ed25519, "one").await.expect("key added");
+        let verifying_key1 = keyring.verifying_key("one").await.expect("verifying key retrieved");
+        keyring.replace("one").await.expect("key replaced");
+        let verifying_key2 = keyring.verifying_key("one").await.expect("verifying key retrieved");
+        assert_ne!(verifying_key1, verifying_key2);
     }
 }

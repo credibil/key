@@ -19,7 +19,7 @@ pub trait Receiver: Send + Sync {
     /// a multi-recipient payload.
     ///
     /// For example, `did:example:alice#key-id`.
-    fn key_id(&self) -> String;
+    fn key_id(&self) -> impl Future<Output = anyhow::Result<String>> + Send;
 
     /// Derive the receiver's shared secret used for decrypting (or direct use)
     /// for the Content Encryption Key.

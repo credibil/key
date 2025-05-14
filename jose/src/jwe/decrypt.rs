@@ -21,7 +21,8 @@ where
     let recipient = match &jwe.recipients {
         Recipients::One(recipient) => recipient,
         Recipients::Many { recipients } => {
-            let Some(found) = recipients.iter().find(|r| r.header.kid == Some(receiver.key_id()))
+            let key_id = receiver.key_id().await?;
+            let Some(found) = recipients.iter().find(|r| r.header.kid == Some(key_id.clone()))
             else {
                 return Err(anyhow!("no recipient found"));
             };
@@ -81,7 +82,7 @@ where
     let ciphertext = Base64UrlUnpadded::decode_vec(&jwe.ciphertext)
         .map_err(|e| anyhow!("issue decoding `ciphertext`: {e}"))?;
     let enc = &jwe.protected.enc;
-        
+
     let buffer = enc.decrypt(&ciphertext, cek, &iv, &aad, &tag)?;
     let deserialized = serde_json::from_slice(&buffer)?;
     Ok(deserialized)

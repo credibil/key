@@ -56,6 +56,20 @@ impl TryFrom<&String> for SecretKey {
 }
 
 impl SecretKey {
+    /// Return the shared secret as a byte slice.
+    #[must_use]
+    pub const fn as_bytes(&self) -> &[u8; 32] {
+        &self.0
+    }
+
+    /// Return the shared secret as a byte array.
+    #[must_use]
+    pub const fn to_bytes(&self) -> [u8; 32] {
+        self.0
+    }
+}
+
+impl SecretKey {
     /// Derive a shared secret from the secret key and the sender's public key
     /// to produce a [`SecretKey`].
     ///
