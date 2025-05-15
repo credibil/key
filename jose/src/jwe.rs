@@ -76,6 +76,20 @@ pub fn encrypt<T: Serialize + Send>(plaintext: T, recipient_public: PublicKey) -
         .build()
 }
 
+/// Encrypt plaintext where the payload is in bytes.
+///
+/// # Errors
+///
+/// Returns an error if the plaintext cannot be encrypted.
+pub fn encrypt_bytes(plaintext: &[u8], recipient_public: PublicKey) -> Result<Jwe> {
+    JweBuilder::new()
+        .content_algorithm(EncAlgorithm::A256Gcm)
+        .key_algorithm(AlgAlgorithm::EcdhEs)
+        .payload_bytes(plaintext)
+        .add_recipient("", recipient_public)
+        .build()
+}
+
 /// Decrypt the JWE and return the plaintext.
 ///
 /// # Errors
@@ -87,6 +101,16 @@ where
 {
     decrypt::decrypt(jwe, receiver).await
 }
+
+/// Decrypt the JWE where the encoded payload is expected to be bytes.
+///
+/// # Errors
+///
+/// Returns an error if the JWE cannot be decrypted.
+pub async fn decrypt_bytes(jwe: &Jwe, receiver: &impl Receiver) -> Result<Vec<u8>> {
+    decrypt::decrypt_bytes(jwe, receiver).await
+}
+
 
 /// In JWE JSON serialization, one or more of the JWE Protected Header, JWE
 /// Shared Unprotected Header, and JWE Per-Recipient Unprotected Header MUST be

@@ -13,11 +13,24 @@ use crate::jwe::{Header, Jwe, KeyEncryption, Protected, ProtectedFlat, Recipient
 /// # Errors
 ///
 /// Returns an error if the JWE cannot be decrypted.
-#[allow(dead_code)]
 pub async fn decrypt<T>(jwe: &Jwe, receiver: &impl Receiver) -> Result<T>
 where
     T: DeserializeOwned,
 {
+    let buffer = decrypt_bytes(jwe, receiver).await?;
+    let deserialized = serde_json::from_slice(&buffer)?;
+    Ok(deserialized)
+}
+
+/// Decrypt the JWE and return the plaintext as bytes.
+///
+/// # Errors
+///
+/// Returns an error if the JWE cannot be decrypted.
+pub async fn decrypt_bytes(
+    jwe: &Jwe,
+    receiver: &impl Receiver,
+) -> Result<Vec<u8>> {
     let recipient = match &jwe.recipients {
         Recipients::One(recipient) => recipient,
         Recipients::Many { recipients } => {
@@ -84,8 +97,7 @@ where
     let enc = &jwe.protected.enc;
 
     let buffer = enc.decrypt(&ciphertext, cek, &iv, &aad, &tag)?;
-    let deserialized = serde_json::from_slice(&buffer)?;
-    Ok(deserialized)
+    Ok(buffer)    
 }
 
 /// Deserialize JWE from Compact Serialization format.
