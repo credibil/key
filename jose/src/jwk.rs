@@ -27,20 +27,9 @@
 
 use anyhow::{Result, anyhow};
 use base64ct::{Base64UrlUnpadded, Encoding};
+use credibil_se::{AlgAlgorithm, Curve, KeyType, ED25519_CODEC, X25519_CODEC};
 use multibase::Base;
 use serde::{Deserialize, Serialize};
-
-use crate::jwe::AlgAlgorithm;
-use crate::{Curve, KeyType};
-
-/// Prefix bytes to indicate Ed25519 multibase encoding.
-pub const ED25519_CODEC: [u8; 2] = [0xed, 0x01];
-
-/// Prefix bytes to indicate X25519 multibase encoding.
-pub const X25519_CODEC: [u8; 2] = [0xec, 0x01];
-
-/// Alias for multi-base encoded string.
-pub type MultiKey = String;
 
 /// Simplified JSON Web Key (JWK) key structure.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]

@@ -49,19 +49,17 @@
 
 mod decrypt;
 mod encrypt;
-mod key;
 
 use anyhow::{Result, bail};
 use base64ct::{Base64UrlUnpadded, Encoding};
+use credibil_se::{AlgAlgorithm, EncAlgorithm, PublicKey, Receiver};
 use encrypt::JweBuilder;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub use self::key::{PublicKey, SecretKey, SharedSecret};
-pub use encrypt::{a256gcm, ecdh_a256kw, ecies_es256k, xchacha20_poly1305, Recipient};
-use crate::Receiver;
 use crate::jwk::PublicKeyJwk;
+pub use encrypt::{Recipient, ecdh_a256kw, ecies_es256k};
 
 /// Encrypt plaintext using the defaults of A256GCM content encryption and
 /// ECDH-ES key agreement algorithms.
@@ -240,52 +238,6 @@ pub struct Header {
     pub tag: Option<String>,
 }
 
-/// The algorithm used to perform authenticated content encryption. That is,
-/// encrypting the plaintext to produce the ciphertext and the Authentication
-/// Tag. MUST be an AEAD algorithm.
-#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
-pub enum EncAlgorithm {
-    /// AES GCM using a 256-bit key.
-    #[default]
-    #[serde(rename = "A256GCM")]
-    A256Gcm,
-
-    /// XChaCha20-Poly1305 is a competitive alternative to AES-256-GCM because
-    /// it’s fast and constant-time without hardware acceleration (resistent
-    /// to cache-timing attacks). It also has longer nonce length to alleviate
-    /// the risk of birthday attacks when nonces are generated randomly.
-    #[serde(rename = "XChacha20+Poly1305")]
-    XChaCha20Poly1305,
-}
-
-/// The algorithm used to encrypt (key encryption) or derive (key agreement)
-/// the value of the shared content encryption key (CEK).
-#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
-pub enum AlgAlgorithm {
-    /// Elliptic Curve Diffie-Hellman Ephemeral-Static key agreement using
-    /// Concat KDF.
-    ///
-    /// Uses Direct Key Agreement — a key agreement algorithm is used to agree
-    /// upon the CEK value.
-    #[default]
-    #[serde(rename = "ECDH-ES")]
-    EcdhEs,
-
-    /// ECDH-ES using Concat KDF and CEK wrapped with "A256KW".
-    ///
-    /// Uses Key Agreement with Key Wrapping — a Key Management Mode in which
-    /// a key agreement algorithm is used to agree upon a symmetric key used
-    /// to encrypt the CEK value to the intended recipient using a symmetric
-    /// key wrapping algorithm.
-    #[serde(rename = "ECDH-ES+A256KW")]
-    EcdhEsA256Kw,
-
-    /// Elliptic Curve Integrated Encryption Scheme for secp256k1.
-    /// Uses AES 256 GCM and HKDF-SHA256.
-    #[serde(rename = "ECIES-ES256K")]
-    EciesEs256K,
-}
-
 /// The compression algorithm applied to the plaintext before encryption.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub enum Zip {
@@ -297,47 +249,53 @@ pub enum Zip {
 
 #[cfg(test)]
 mod test {
-    use ed25519_dalek::PUBLIC_KEY_LENGTH;
-    use rand::rngs::OsRng;
-    use sha2::Digest;
+    use credibil_se::Curve;
+    use test_kms::{Keyring, KeyringReceiver};
 
     use super::*;
 
     // Use top-level encrypt method to shortcut using the builder
     #[tokio::test]
     async fn simple() {
-        let key_store = X25519::new();
-        let plaintext = "The true sign of intelligence is not knowledge but imagination.";
-        let public_key = PublicKey::from(key_store.public_key);
+        let mut key_store = Keyring::new("simple").await.expect("create keyring");
+        key_store.add(&Curve::X25519, "encription-key-1").await.expect("add key");
 
+        let plaintext = "The true sign of intelligence is not knowledge but imagination.";
+        let public_key = key_store.public_key("encription-key-1").await.expect("get public key");
         let jwe = encrypt(&plaintext, public_key).expect("should encrypt");
-        let decrypted: String = decrypt(&jwe, &key_store).await.expect("should decrypt");
+
+        let receiver = KeyringReceiver::new("encription-key-1", key_store.clone());
+        let decrypted: String = decrypt(&jwe, &receiver).await.expect("should decrypt");
         assert_eq!(plaintext, decrypted);
     }
 
     // Compact serialization/deserialization
     #[tokio::test]
     async fn compact() {
-        let key_store = X25519::new();
-        let plaintext = "The true sign of intelligence is not knowledge but imagination.";
-        let public_key = PublicKey::from(key_store.public_key);
+        let mut key_store = Keyring::new("compact").await.expect("create keyring");
+        key_store.add(&Curve::X25519, "encription-key-1").await.expect("add key");
 
+        let plaintext = "The true sign of intelligence is not knowledge but imagination.";
+        let public_key = key_store.public_key("encription-key-1").await.expect("get public key");
         let jwe = encrypt(&plaintext, public_key).expect("should encrypt");
 
         // serialize/deserialize
         let compact_jwe = jwe.encode().expect("should encode jwe");
         let jwe: Jwe = compact_jwe.parse().expect("should parse");
 
-        let decrypted: String = decrypt(&jwe, &key_store).await.expect("should decrypt");
+        let receiver = KeyringReceiver::new("encription-key-1", key_store.clone());
+        let decrypted: String = decrypt(&jwe, &receiver).await.expect("should decrypt");
         assert_eq!(plaintext, decrypted);
     }
 
     // round trip: encrypt and then decrypt
     #[tokio::test]
     async fn default() {
-        let key_store = X25519::new();
+        let mut key_store = Keyring::new("default").await.expect("create keyring");
+        key_store.add(&Curve::X25519, "encription-key-1").await.expect("add key");
+
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
-        let public_key = PublicKey::from(key_store.public_key);
+        let public_key = key_store.public_key("encription-key-1").await.expect("get public key");
 
         let jwe = JweBuilder::new()
             .payload(&plaintext)
@@ -345,15 +303,19 @@ mod test {
             .build()
             .expect("should encrypt");
 
-        let decrypted: String = decrypt(&jwe, &key_store).await.expect("should decrypt");
+        let receiver = KeyringReceiver::new("encription-key-1", key_store.clone());
+        let decrypted: String = decrypt(&jwe, &receiver).await.expect("should decrypt");
         assert_eq!(plaintext, decrypted);
     }
 
     #[tokio::test]
     async fn ecdh_es_a256kw() {
-        let key_store = X25519::new();
+        let mut key_store = Keyring::new("ecdh_es_a256kw").await.expect("create keyring");
+        key_store.add(&Curve::X25519, "did:example:alice#key-id").await.expect("add key");
+
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
-        let public_key = PublicKey::from(key_store.public_key);
+        let public_key =
+            key_store.public_key("did:example:alice#key-id").await.expect("get public key");
 
         let jwe = JweBuilder::new()
             .content_algorithm(EncAlgorithm::A256Gcm)
@@ -363,15 +325,18 @@ mod test {
             .build()
             .expect("should encrypt");
 
-        let decrypted: String = decrypt(&jwe, &key_store).await.expect("should decrypt");
+        let receiver = KeyringReceiver::new("did:example:alice#key-id", key_store.clone());
+        let decrypted: String = decrypt(&jwe, &receiver).await.expect("should decrypt");
         assert_eq!(plaintext, decrypted);
     }
 
     #[tokio::test]
     async fn ed25519() {
-        let key_store = Ed25519::new();
+        let mut key_store = Keyring::new("ed25519").await.expect("create keyring");
+        key_store.add(&Curve::Ed25519, "did:example:alice#key-id").await.expect("add key");
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
-        let public_key = PublicKey::from(key_store.public_key);
+        let public_key =
+            key_store.public_key("did:example:alice#key-id").await.expect("get public key");
 
         let jwe = JweBuilder::new()
             .payload(&plaintext)
@@ -379,48 +344,18 @@ mod test {
             .build()
             .expect("should encrypt");
 
-        let decrypted: String = decrypt(&jwe, &key_store).await.expect("should decrypt");
+        let receiver = KeyringReceiver::new("did:example:alice#key-id", key_store.clone());
+        let decrypted: String = decrypt(&jwe, &receiver).await.expect("should decrypt");
         assert_eq!(plaintext, decrypted);
-    }
-
-    // derive X25519 keypair from Ed25519 keypair (reverse of XEdDSA)
-    // XEdDSA resources:
-    // - https://signal.org/docs/specifications/xeddsa
-    // - https://github.com/Zentro/lambx
-    // - https://codeberg.org/SpotNuts/xeddsa
-    #[test]
-    fn edx25519() {
-        const ALICE_SECRET: &str = "8rmFFiUcTjjrL5mgBzWykaH39D64VD0mbDHwILvsu30";
-        const ALICE_PUBLIC: &str = "RW-Q0fO2oECyLs4rZDZZo4p6b7pu7UF2eu9JBsktDco";
-
-        let alice_secret: [u8; PUBLIC_KEY_LENGTH] =
-            Base64UrlUnpadded::decode_vec(ALICE_SECRET).unwrap().try_into().unwrap();
-        let alice_public: [u8; PUBLIC_KEY_LENGTH] =
-            Base64UrlUnpadded::decode_vec(ALICE_PUBLIC).unwrap().try_into().unwrap();
-
-        let ephemeral_secret = x25519_dalek::EphemeralSecret::random_from_rng(rand::thread_rng());
-        let ephemeral_public = x25519_dalek::PublicKey::from(&ephemeral_secret);
-
-        // SENDER: diffie-hellman using Alice public -> montgomery
-        let alice_verifier = ed25519_dalek::VerifyingKey::from_bytes(&alice_public).unwrap();
-        let alice_montgomery = alice_verifier.to_montgomery();
-        let ephemeral_dh = ephemeral_secret.diffie_hellman(&alice_montgomery.to_bytes().into());
-
-        // RECEIVER: diffie-hellman using ephemeral public
-        let hash = sha2::Sha512::digest(&alice_secret);
-        let mut hashed = [0u8; PUBLIC_KEY_LENGTH];
-        hashed.copy_from_slice(&hash[..PUBLIC_KEY_LENGTH]);
-        let alice_x_secret = x25519_dalek::StaticSecret::from(hashed);
-        let alice_dh = alice_x_secret.diffie_hellman(&ephemeral_public);
-
-        assert_eq!(ephemeral_dh.as_bytes(), alice_dh.as_bytes());
     }
 
     #[tokio::test]
     async fn ecies_es256k() {
-        let key_store = Es256k::new();
+        let mut key_store = Keyring::new("ecies_es256k").await.expect("create keyring");
+        key_store.add(&Curve::Es256K, "did:example:alice#key-id").await.expect("add key");
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
-        let public_key = PublicKey::from(key_store.public_key);
+        let public_key =
+            key_store.public_key("did:example:alice#key-id").await.expect("get public key");
 
         let jwe = JweBuilder::new()
             .content_algorithm(EncAlgorithm::A256Gcm)
@@ -430,123 +365,8 @@ mod test {
             .build()
             .expect("should encrypt");
 
-        let decrypted: String = decrypt(&jwe, &key_store).await.expect("should decrypt");
+        let receiver = KeyringReceiver::new("did:example:alice#key-id", key_store.clone());
+        let decrypted: String = decrypt(&jwe, &receiver).await.expect("should decrypt");
         assert_eq!(plaintext, decrypted);
-    }
-
-    // // two-step encryption -> get intermediate ciphertext work product
-    // #[tokio::test]
-    // async fn two_step() {
-    //     let key_store = X25519::new();
-    //     let plaintext = "The true sign of intelligence is not knowledge but imagination.";
-    //     let public_key = PublicKey::from(key_store.public_key);
-
-    //     let mut builder =
-    //         JweBuilder::new().key_algorithm(AlgAlgorithm::EcdhEsA256Kw).payload(&plaintext);
-    //     let jwe = builder.encrypt().expect("should encrypt");
-
-    //     let jwe = builder
-    //         .add_recipient("did:example:alice#key-id", public_key)
-    //         .build()
-    //         .expect("should build");
-
-    //     let decrypted: String = decrypt(&jwe, &key_store).await.expect("should decrypt");
-    //     assert_eq!(plaintext, decrypted);
-    // }
-
-    // Basic key store for testing
-    struct X25519 {
-        public_key: x25519_dalek::PublicKey,
-        secret_key: x25519_dalek::StaticSecret,
-    }
-
-    impl X25519 {
-        fn new() -> Self {
-            let secret_key = x25519_dalek::StaticSecret::random_from_rng(OsRng);
-            let public_key = x25519_dalek::PublicKey::from(&secret_key).into();
-
-            Self {
-                public_key,
-                secret_key,
-            }
-        }
-    }
-
-    impl Receiver for X25519 {
-        fn key_id(&self) -> String {
-            "did:example:alice#key-id".to_string()
-        }
-
-        async fn shared_secret(&self, sender_public: PublicKey) -> Result<SharedSecret> {
-            let secret_key = SecretKey::from(self.secret_key.to_bytes());
-            secret_key.shared_secret(sender_public)
-        }
-    }
-
-    // Basic key store for testing
-    struct Es256k {
-        public_key: ecies::PublicKey,
-        secret_key: ecies::SecretKey,
-    }
-
-    impl Es256k {
-        fn new() -> Self {
-            let (secret_key, public_key) = ecies::utils::generate_keypair();
-            Self {
-                public_key,
-                secret_key,
-            }
-        }
-    }
-
-    impl Receiver for Es256k {
-        fn key_id(&self) -> String {
-            "did:example:alice#key-id".to_string()
-        }
-
-        async fn shared_secret(&self, sender_public: PublicKey) -> Result<SharedSecret> {
-            let secret: [u8; PUBLIC_KEY_LENGTH] = self.secret_key.serialize();
-            let secret_key = SecretKey::try_from(secret).expect("should convert");
-            secret_key.shared_secret(sender_public)
-        }
-    }
-
-    // Basic key store for testing
-    struct Ed25519 {
-        public_key: x25519_dalek::PublicKey,
-        secret_key: x25519_dalek::StaticSecret,
-    }
-
-    impl Ed25519 {
-        fn new() -> Self {
-            // Ed25519 keypair
-            let signing_key = ed25519_dalek::SigningKey::generate(&mut OsRng);
-            let verifying_key = signing_key.verifying_key();
-
-            // derive X25519 keypair from Ed25519 keypair
-            let hash = sha2::Sha512::digest(signing_key.as_bytes());
-            let mut hashed = [0u8; PUBLIC_KEY_LENGTH];
-            hashed.copy_from_slice(&hash[..PUBLIC_KEY_LENGTH]);
-
-            let secret_key = x25519_dalek::StaticSecret::from(hashed);
-            let public_key =
-                x25519_dalek::PublicKey::from(verifying_key.to_montgomery().to_bytes());
-
-            Self {
-                public_key,
-                secret_key,
-            }
-        }
-    }
-
-    impl Receiver for Ed25519 {
-        fn key_id(&self) -> String {
-            "did:example:alice#key-id".to_string()
-        }
-
-        async fn shared_secret(&self, sender_public: PublicKey) -> Result<SharedSecret> {
-            let secret_key = SecretKey::from(self.secret_key.to_bytes());
-            secret_key.shared_secret(sender_public)
-        }
     }
 }

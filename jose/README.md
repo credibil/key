@@ -1,4 +1,4 @@
-# Signing and Encryption
+# Javascript Object Signing and Encryption (JOSE)
 
 Shared traits, types and functions for higher-order Credibil crates.
 
