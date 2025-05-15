@@ -259,6 +259,28 @@ impl TryFrom<PublicKey> for ecies::PublicKey {
     }
 }
 
+impl TryFrom<PublicKey> for ecdsa::VerifyingKey<k256::Secp256k1> {
+    type Error = anyhow::Error;
+
+    fn try_from(val: PublicKey) -> anyhow::Result<Self> {
+        let y = val.y.ok_or_else(|| anyhow!("'y' is invalid"))?;
+        let mut sec1 = vec![0x04]; // uncompressed format
+        sec1.append(&mut val.x.to_vec());
+        sec1.append(&mut y.to_vec());
+
+        Self::from_sec1_bytes(&sec1).map_err(|e| anyhow!("unable to build verifying key: {e}"))
+    }
+}
+
+impl TryFrom<PublicKey> for ed25519_dalek::VerifyingKey {
+    type Error = anyhow::Error;
+
+    fn try_from(val: PublicKey) -> anyhow::Result<Self> {
+        Self::from_bytes(&val.x)
+            .map_err(|e| anyhow!("unable to build verifying key: {e}"))
+    }
+}
+
 /// Derive an `X25519` public key from an `Ed25519` public key.
 ///
 /// # Errors
