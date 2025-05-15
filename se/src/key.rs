@@ -217,11 +217,28 @@ impl TryFrom<&[u8]> for PublicKey {
         Err(anyhow!("invalid public key length"))
     }
 }
+
 impl TryFrom<Vec<u8>> for PublicKey {
     type Error = anyhow::Error;
 
     fn try_from(val: Vec<u8>) -> anyhow::Result<Self> {
         Self::try_from(val.as_slice())
+    }
+}
+
+impl TryFrom<(&[u8], &[u8])> for PublicKey {
+    type Error = anyhow::Error;
+
+    fn try_from(val: (&[u8], &[u8])) -> anyhow::Result<Self> {
+        if val.0.len() != 32 || val.1.len() != 32 {
+            return Err(anyhow!("invalid public key length"));
+        }
+
+        let mut x = [0; 32];
+        let mut y = [0; 32];
+        x.copy_from_slice(val.0);
+        y.copy_from_slice(val.1);
+        Ok(Self { x, y: Some(y) })
     }
 }
 
