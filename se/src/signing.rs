@@ -3,7 +3,7 @@
 use std::fmt::Display;
 
 use anyhow::anyhow;
-use ecdsa::signature::Verifier as _;
+use ecdsa::signature::{Signer as _, Verifier as _};
 use serde::{Deserialize, Serialize};
 
 /// The signing algorithm used by the signer.
@@ -25,7 +25,33 @@ impl Display for Algorithm {
     }
 }
 
-/// Verifications
+/// Signing
+impl Algorithm {
+    /// Sign a message with the given private key.
+    ///
+    /// # Errors
+    /// Will return an error if the signature is invalid or the signing key is
+    /// not correct for the type of algorithm.
+    pub fn try_sign(&self, msg: &[u8], priv_key: &[u8]) -> anyhow::Result<Vec<u8>> {
+        match self {
+            Self::Es256K => {
+                let signing_key =
+                    ecdsa::SigningKey::<k256::Secp256k1>::from_bytes(priv_key.into())?;
+                let signature: ecdsa::Signature::<k256::Secp256k1> = signing_key.try_sign(msg)?;
+                Ok(signature.to_vec())
+            }
+            Self::EdDSA => {
+                let pk_bytes =
+                    priv_key.try_into().map_err(|_| anyhow!("invalid private key length"))?;
+                let signing_key = ed25519_dalek::SigningKey::from_bytes(&pk_bytes);
+                let signature = signing_key.sign(msg);
+                Ok(signature.to_vec())
+            }
+        }
+    }
+}
+
+/// Verification
 impl Algorithm {
     /// Verify the signature of a signed message.
     ///

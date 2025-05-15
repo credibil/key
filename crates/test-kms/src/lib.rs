@@ -7,7 +7,6 @@ use blockstore::Mockstore;
 use credibil_se::{
     Algorithm, Curve, PUBLIC_KEY_LENGTH, PublicKey, Receiver, SecretKey, SharedSecret, Signer,
 };
-use ed25519_dalek::Signer as _;
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
 
@@ -164,15 +163,11 @@ impl Keyring {
 
     /// Add a key to the keyring with the the given ID (and its next key),
     /// replacing any existing key with the same ID.
-    /// 
+    ///
     /// # Errors
     /// Will return an error if the requested key cannot be added to the
     /// underlying storage.
-    pub async fn add_or_replace(
-        &mut self,
-        curve: &Curve,
-        id: impl ToString,
-    ) -> anyhow::Result<()> {
+    pub async fn add_or_replace(&mut self, curve: &Curve, id: impl ToString) -> anyhow::Result<()> {
         if self.blockstore.exists(&self.owner, "", &id.to_string()).await? {
             self.replace(id).await
         } else {
@@ -351,21 +346,14 @@ impl Keyring {
             .await?
             .ok_or(anyhow!("key not found"))?;
         let stored_key = StoredKey::from_bytes(&stored_key)?;
+        let signing_key_bytes: [u8; PUBLIC_KEY_LENGTH] =
+            stored_key.key.try_into().map_err(|_| anyhow!("cannot convert stored vec to slice"))?;
         match stored_key.curve {
-            Curve::Ed25519 => {
-                let signing_key_bytes: [u8; PUBLIC_KEY_LENGTH] = stored_key
-                    .key
-                    .try_into()
-                    .map_err(|_| anyhow!("cannot convert stored vec to slice"))?;
-                let signing_key = ed25519_dalek::SigningKey::from(&signing_key_bytes);
-                Ok(signing_key.sign(msg).to_bytes().to_vec())
-            }
+            Curve::Ed25519 => Algorithm::Es256K.try_sign(msg, &signing_key_bytes),
             Curve::X25519 => {
                 bail!("X25519 cannot be used for signing");
             }
-            Curve::Es256K => {
-                bail!("ES256K cannot be used for signing");
-            }
+            Curve::Es256K => Algorithm::Es256K.try_sign(msg, &signing_key_bytes),
             Curve::P256 => {
                 unimplemented!("P256 not implemented yet");
             }

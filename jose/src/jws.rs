@@ -252,7 +252,7 @@ pub struct Protected {
 impl Protected {
     /// Returns the `kid` if the key type is `Kid` or `Jku`.
     #[must_use]
-    pub fn kid(&self) -> Option<&str> {
+    pub const fn kid(&self) -> Option<&str> {
         match &self.key {
             KeyBinding::Kid(kid) | KeyBinding::Jku { kid, .. } => Some(kid.as_str()),
             KeyBinding::Jwk(_) => None,
@@ -270,7 +270,7 @@ impl Protected {
 
     /// Returns the `jku` if the key type is `Jku`.
     #[must_use]
-    pub fn jku(&self) -> Option<&str> {
+    pub const fn jku(&self) -> Option<&str> {
         match &self.key {
             KeyBinding::Jku { jku, .. } => Some(jku.as_str()),
             _ => None,
