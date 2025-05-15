@@ -315,7 +315,7 @@ impl PublicKeyJwk {
         sec1.append(&mut Base64UrlUnpadded::decode_vec(&self.x)?);
         sec1.append(&mut Base64UrlUnpadded::decode_vec(y)?);
 
-        Algorithm::ES256K.verify(msg, sig, &sec1)
+        Algorithm::Es256K.verify(msg, sig, &sec1)
     }
 
     // Verify the signature of the provided message using the EdDSA algorithm.
