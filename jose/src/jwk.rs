@@ -1,6 +1,6 @@
 //! # JSON Web Key (JWK)
 //!
-//! A JWK ([RFC7517]) is a JSON representation of a cryptographic key.  
+//! A JWK ([RFC7517]) is a JSON representation of a cryptographic key.
 //! Additionally, a JWK Set (JWKS) is used to represent a set of JWKs.
 //!
 //! See [RFC7517] for more detail.
