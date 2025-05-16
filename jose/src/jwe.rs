@@ -52,13 +52,13 @@ mod encrypt;
 
 use anyhow::{Result, bail};
 use base64ct::{Base64UrlUnpadded, Encoding};
-use credibil_se::{AlgAlgorithm, EncAlgorithm, PublicKey, Receiver};
+use credibil_se::{AlgAlgorithm, EncAlgorithm, PublicKey};
 use encrypt::JweBuilder;
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::jwk::PublicKeyJwk;
+pub use decrypt::{decrypt, decrypt_bytes};
 pub use encrypt::{Recipient, ecdh_a256kw, ecies_es256k};
 
 /// Encrypt plaintext using the defaults of A256GCM content encryption and
@@ -90,18 +90,6 @@ pub fn encrypt_bytes(plaintext: &[u8], recipient_public: PublicKey) -> Result<Jw
         .payload_bytes(plaintext)
         .add_recipient("", recipient_public)
         .build()
-}
-
-/// Decrypt the JWE and return the plaintext.
-///
-/// # Errors
-///
-/// Returns an error if the JWE cannot be decrypted.
-pub async fn decrypt<T>(jwe: &Jwe, receiver: &impl Receiver) -> Result<T>
-where
-    T: DeserializeOwned,
-{
-    decrypt::decrypt(jwe, receiver).await
 }
 
 /// In JWE JSON serialization, one or more of the JWE Protected Header, JWE
