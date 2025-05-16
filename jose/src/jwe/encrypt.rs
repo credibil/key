@@ -28,7 +28,13 @@ impl Default for JweBuilder<NoPayload> {
 pub struct NoPayload;
 #[doc(hidden)]
 /// Typestate generic for a JWE builder with a payload.
-pub struct Payload<T: Serialize + Send>(T);
+pub enum Payload<T: Serialize + Send> {
+    /// The payload is a JSON-serializable object.
+    Serializable(T),
+
+    /// The payload is bytes.
+    Bytes(Vec<u8>),
+}
 
 /// Recipient information required when generating a JWE.
 #[derive(Clone, Debug)]
@@ -54,12 +60,22 @@ impl JweBuilder<NoPayload> {
         }
     }
 
-    /// Set the payload to be encrypted.
+    /// Set the payload to be encrypted to be a serializable JSON object.
     pub fn payload<T: Serialize + Send>(self, payload: T) -> JweBuilder<Payload<T>> {
         JweBuilder {
             content_algorithm: self.content_algorithm,
             key_algorithm: self.key_algorithm,
-            payload: Payload(payload),
+            payload: Payload::Serializable(payload),
+            recipients: self.recipients,
+        }
+    }
+
+    /// Set the payload to be encrypted to be a byte array.
+    pub fn payload_bytes(self, payload: &[u8]) -> JweBuilder<Payload<Vec<u8>>> {
+        JweBuilder {
+            content_algorithm: self.content_algorithm,
+            key_algorithm: self.key_algorithm,
+            payload: Payload::Bytes(payload.to_vec()),
             recipients: self.recipients,
         }
     }
@@ -124,7 +140,10 @@ impl<T: Serialize + Send> JweBuilder<Payload<T>> {
         };
         let aad = serde_json::to_vec(&protected)?;
 
-        let payload = serde_json::to_vec(&self.payload.0)?;
+        let payload = match &self.payload {
+            Payload::Serializable(data) => serde_json::to_vec(&data)?,
+            Payload::Bytes(data) => data.clone(),
+        };
         let encrypted = self.content_algorithm.encrypt(&payload, &key_encrypter.cek, &aad)?;
 
         let jwe = Jwe {

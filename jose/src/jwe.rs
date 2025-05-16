@@ -62,7 +62,8 @@ use crate::jwk::PublicKeyJwk;
 pub use encrypt::{Recipient, ecdh_a256kw, ecies_es256k};
 
 /// Encrypt plaintext using the defaults of A256GCM content encryption and
-/// ECDH-ES key agreement algorithms.
+/// ECDH-ES key agreement algorithms where the payload is a JSON-serializable
+/// object.
 ///
 /// # Errors
 ///
@@ -72,6 +73,21 @@ pub fn encrypt<T: Serialize + Send>(plaintext: T, recipient_public: PublicKey) -
         .content_algorithm(EncAlgorithm::A256Gcm)
         .key_algorithm(AlgAlgorithm::EcdhEs)
         .payload(plaintext)
+        .add_recipient("", recipient_public)
+        .build()
+}
+
+/// Encrypt plaintext using the defaults of A256GCM content encryption and
+/// ECDH-ES key agreement algorithms where the payload is bytes.
+///
+/// # Errors
+///
+/// Returns an error if the plaintext cannot be encrypted.
+pub fn encrypt_bytes(plaintext: &[u8], recipient_public: PublicKey) -> Result<Jwe> {
+    JweBuilder::new()
+        .content_algorithm(EncAlgorithm::A256Gcm)
+        .key_algorithm(AlgAlgorithm::EcdhEs)
+        .payload_bytes(plaintext)
         .add_recipient("", recipient_public)
         .build()
 }
