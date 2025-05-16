@@ -2,10 +2,10 @@
 
 use std::fmt::Display;
 
-use ecdsa::signature::Verifier as _;
+use ecdsa::signature::{Signer as _, Verifier as _};
 use serde::{Deserialize, Serialize};
 
-use crate::PublicKey;
+use crate::{PublicKey, SecretKey};
 
 /// The signing algorithm used by the signer.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -28,6 +28,30 @@ impl Display for Algorithm {
 
 /// Verifications
 impl Algorithm {
+    /// Sign a message with the given signing key.
+    /// 
+    /// # Errors
+    /// Will return an error if the signing key is not the correct format for
+    /// the type of algorithm or if the underlying signing operation fails.
+    pub fn try_sign(
+        &self,
+        msg: &[u8],
+        signing_key: SecretKey,
+    ) -> anyhow::Result<Vec<u8>> {
+        match self {
+            Self::Es256K => {
+                let sk: ecdsa::SigningKey<k256::Secp256k1> = signing_key.try_into()?;
+                let signature: ecdsa::Signature<k256::Secp256k1> = sk.sign(msg);
+                Ok(signature.to_vec())
+            }
+            Self::EdDSA => {
+                let sk: ed25519_dalek::SigningKey = signing_key.into();
+                let signature = sk.sign(msg);
+                Ok(signature.to_vec())
+            }
+        }
+    }
+
     /// Verify the signature of a signed message.
     ///
     /// # Errors

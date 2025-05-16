@@ -7,7 +7,6 @@ use blockstore::Mockstore;
 use credibil_se::{
     Algorithm, Curve, PUBLIC_KEY_LENGTH, PublicKey, Receiver, SecretKey, SharedSecret, Signer,
 };
-use ed25519_dalek::Signer as _;
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
 
@@ -164,15 +163,11 @@ impl Keyring {
 
     /// Add a key to the keyring with the the given ID (and its next key),
     /// replacing any existing key with the same ID.
-    /// 
+    ///
     /// # Errors
     /// Will return an error if the requested key cannot be added to the
     /// underlying storage.
-    pub async fn add_or_replace(
-        &mut self,
-        curve: &Curve,
-        id: impl ToString,
-    ) -> anyhow::Result<()> {
+    pub async fn add_or_replace(&mut self, curve: &Curve, id: impl ToString) -> anyhow::Result<()> {
         if self.blockstore.exists(&self.owner, "", &id.to_string()).await? {
             self.replace(id).await
         } else {
@@ -294,6 +289,8 @@ impl Keyring {
     }
 
     /// Get the private key for encryption from the keyring with the given ID.
+    /// 
+    /// Use `signing_key` to get a private key for signing.
     ///
     /// # Errors
     /// Will return an error if the requested key cannot be retrieved from
@@ -320,6 +317,31 @@ impl Keyring {
 
         let secret_key = SecretKey::from(secret_key_bytes);
         Ok(secret_key)
+    }
+
+    /// Get the private key for signing from the keyring with the given ID.
+    /// 
+    /// Use `private_key` to get a private key for encryption.
+    /// 
+    /// # Errors
+    /// Will return an error if the requested key cannot be retrieved from
+    /// storage or cannot be converted from the stored bytes. Will also return
+    /// an error if the key's curve type is not supported for signing.
+    pub async fn signing_key(&self, id: impl ToString) -> anyhow::Result<SecretKey> {
+        let stored_key = self
+            .blockstore
+            .get(&self.owner, "", &id.to_string())
+            .await?
+            .ok_or(anyhow!("key not found"))?;
+        let stored_key = StoredKey::from_bytes(&stored_key)?;
+        let secret_key_bytes: [u8; PUBLIC_KEY_LENGTH] =
+            stored_key.key.try_into().map_err(|_| anyhow!("cannot convert stored vec to slice"))?;
+        let secret_key = SecretKey::from(secret_key_bytes);
+
+        if matches!(stored_key.curve, Curve::Ed25519) || matches!(stored_key.curve, Curve::Es256K) {
+            return Ok(secret_key);
+        }
+        bail!("unsupported algorithm for signing")
     }
 
     /// Get the curve for the keyring key with the given ID.
@@ -351,20 +373,18 @@ impl Keyring {
             .await?
             .ok_or(anyhow!("key not found"))?;
         let stored_key = StoredKey::from_bytes(&stored_key)?;
+        let secret_key_bytes: [u8; PUBLIC_KEY_LENGTH] =
+            stored_key.key.try_into().map_err(|_| anyhow!("cannot convert stored vec to slice"))?;
+        let secret_key = SecretKey::from(secret_key_bytes);
         match stored_key.curve {
             Curve::Ed25519 => {
-                let signing_key_bytes: [u8; PUBLIC_KEY_LENGTH] = stored_key
-                    .key
-                    .try_into()
-                    .map_err(|_| anyhow!("cannot convert stored vec to slice"))?;
-                let signing_key = ed25519_dalek::SigningKey::from(&signing_key_bytes);
-                Ok(signing_key.sign(msg).to_bytes().to_vec())
+                Algorithm::EdDSA.try_sign(msg, secret_key)
             }
             Curve::X25519 => {
                 bail!("X25519 cannot be used for signing");
             }
             Curve::Es256K => {
-                bail!("ES256K cannot be used for signing");
+                Algorithm::Es256K.try_sign(msg, secret_key)
             }
             Curve::P256 => {
                 unimplemented!("P256 not implemented yet");

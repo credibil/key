@@ -94,10 +94,25 @@ impl SecretKey {
 impl TryFrom<SecretKey> for ecies::SecretKey {
     type Error = anyhow::Error;
 
-    fn try_from(val: SecretKey) -> anyhow::Result<Self> {
+    fn try_from(val: SecretKey) -> Result<Self, Self::Error> {
         Self::parse(&val.0).map_err(|e| anyhow!("issue parsing secret key: {e}"))
     }
 }
+
+impl TryFrom<SecretKey> for ecdsa::SigningKey<k256::Secp256k1> {
+    type Error = anyhow::Error;
+
+    fn try_from(val: SecretKey) -> Result<Self, Self::Error> {
+        Self::from_slice(&val.0).map_err(|e| anyhow!("issue parsing secret key: {e}"))
+    }
+}
+
+impl From<SecretKey> for ed25519_dalek::SigningKey {
+    fn from(val: SecretKey) -> Self {
+        Self::from_bytes(&val.0)
+    }
+}
+
 
 /// A shared secret key that can be used to encrypt and decrypt messages.
 #[derive(Debug, Zeroize, ZeroizeOnDrop)]
