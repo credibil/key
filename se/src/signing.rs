@@ -2,18 +2,17 @@
 
 use std::fmt::Display;
 
-use anyhow::{anyhow, bail};
 use ecdsa::signature::Verifier as _;
 use serde::{Deserialize, Serialize};
 
-use crate::{Curve, PublicKey};
+use crate::PublicKey;
 
 /// The signing algorithm used by the signer.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub enum Algorithm {
     /// Algorithm for the secp256k1 curve
     #[serde(rename = "ES256K")]
-    ES256K,
+    Es256K,
 
     /// Algorithm for the Ed25519 curve
     #[default]
@@ -34,21 +33,23 @@ impl Algorithm {
     /// # Errors
     /// Will return an error if the signature is invalid or the verifying key is
     /// not correct for the type of algorithm.
-    pub fn verify(&self, msg: &[u8], sig: &[u8], pub_key: &[u8]) -> anyhow::Result<()> {
+    pub fn verify(&self, msg: &[u8], sig: &[u8], verifying_key: &PublicKey) -> anyhow::Result<()> {
         match self {
-            Self::ES256K => {
-                let verifying_key =
-                    ecdsa::VerifyingKey::<k256::Secp256k1>::from_sec1_bytes(pub_key)?;
+            Self::Es256K => {
+                let vk: ecdsa::VerifyingKey<k256::Secp256k1> = (*verifying_key).try_into()?;
+                // let verifying_key =
+                //     ecdsa::VerifyingKey::<k256::Secp256k1>::from_sec1_bytes(verifying_key)?;
                 let signature = ecdsa::Signature::<k256::Secp256k1>::from_slice(sig)?;
                 let normalized = signature.normalize_s().unwrap_or(signature);
-                Ok(verifying_key.verify(msg, &normalized)?)
+                Ok(vk.verify(msg, &normalized)?)
             }
             Self::EdDSA => {
-                let pk_bytes =
-                    pub_key.try_into().map_err(|_| anyhow!("invalid public key length"))?;
-                let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(&pk_bytes)?;
+                let vk: ed25519_dalek::VerifyingKey = (*verifying_key).try_into()?;
+                // let pk_bytes =
+                //     verifying_key.try_into().map_err(|_| anyhow!("invalid public key length"))?;
+                // let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(&pk_bytes)?;
                 let signature = ed25519_dalek::Signature::from_slice(sig)?;
-                Ok(verifying_key.verify(msg, &signature)?)
+                Ok(vk.verify(msg, &signature)?)
             }
         }
     }
@@ -75,52 +76,3 @@ pub trait Signer: Send + Sync {
     /// Signature algorithm used by the signer.
     fn algorithm(&self) -> impl Future<Output = anyhow::Result<Algorithm>> + Send;
 }
-
-impl Curve {
-    /// Verify the signature of the provided message using the JWK.
-    ///
-    /// # Errors
-    ///
-    /// Will return an error if the signature is invalid, the JWK is invalid, or
-    /// the algorithm is unsupported.
-    pub fn verify(
-        &self, sig: &[u8], sig_data: &[u8], verifying_key: &PublicKey,
-    ) -> anyhow::Result<()> {
-        match self {
-            Self::Es256K => Self::verify_es256k(sig, sig_data, verifying_key),
-            Self::Ed25519 => Self::verify_eddsa(sig, sig_data, verifying_key),
-            _ => bail!("unimplemented curve verification"),
-        }
-    }
-
-    /// Verify the signature of the provided message using the `ES256K` algorithm.
-    fn verify_es256k(
-        sig: &[u8], msg: &[u8], verifying_key: &PublicKey,
-    ) -> anyhow::Result<()> {
-        use ecdsa::{Signature, VerifyingKey};
-        use k256::Secp256k1;
-
-        // build verifying key
-        let vk: VerifyingKey<Secp256k1> = (*verifying_key).try_into()?;
-        let signature: Signature<Secp256k1> = Signature::from_slice(sig)?;
-        let normalised = signature.normalize_s().unwrap_or(signature);
-
-        Ok(vk.verify(msg, &normalised)?)
-    }
-
-    /// Verify the signature of the provided message using the `EdDSA` algorithm.
-    fn verify_eddsa(
-        sig: &[u8], msg: &[u8], verifying_key: &PublicKey,
-    ) -> anyhow::Result<()> {
-        use ed25519_dalek::{Signature, VerifyingKey};
-
-        // build verifying key
-        let vk: VerifyingKey = (*verifying_key).try_into()?;
-        let signature =
-            Signature::from_slice(sig).map_err(|e| anyhow!("unable to build signature: {e}"))?;
-
-        vk.verify(msg, &signature).map_err(|e| anyhow!("unable to verify signature: {e}"))
-    }
-}
-
-// TODO: Add verification tests.

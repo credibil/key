@@ -541,7 +541,7 @@ impl Signer for KeyringSigner {
         let curve = self.keyring.curve(&self.key_id).await?;
         let algorithm = match curve {
             Curve::Ed25519 => Algorithm::EdDSA,
-            Curve::Es256K => Algorithm::ES256K,
+            Curve::Es256K => Algorithm::Es256K,
             _ => {
                 bail!("unsupported algorithm for signing")
             }

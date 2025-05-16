@@ -14,7 +14,7 @@ use std::str::FromStr;
 
 use anyhow::{Result, anyhow, bail};
 use base64ct::{Base64UrlUnpadded, Encoding};
-use credibil_se::{Algorithm, Curve, Signer};
+use credibil_se::{Algorithm, Curve, PublicKey, Signer};
 use serde::{Deserialize, Serialize};
 
 use crate::KeyBinding;
@@ -315,7 +315,9 @@ impl PublicKeyJwk {
         sec1.append(&mut Base64UrlUnpadded::decode_vec(&self.x)?);
         sec1.append(&mut Base64UrlUnpadded::decode_vec(y)?);
 
-        Algorithm::ES256K.verify(msg, sig, &sec1)
+        let vk: PublicKey = sec1.try_into()?;
+        Algorithm::Es256K.verify(msg, sig, &vk)
+        //Algorithm::Es256K.verify(msg, sig, &sec1)
     }
 
     // Verify the signature of the provided message using the EdDSA algorithm.
@@ -324,7 +326,9 @@ impl PublicKeyJwk {
         let x_bytes = Base64UrlUnpadded::decode_vec(&self.x)
             .map_err(|e| anyhow!("unable to base64 decode proof JWK 'x': {e}"))?;
 
-        Algorithm::EdDSA.verify(msg, sig_bytes, &x_bytes)
+        let vk: PublicKey = x_bytes.try_into()?;
+        Algorithm::EdDSA.verify(msg, sig_bytes, &vk)
+        //Algorithm::EdDSA.verify(msg, sig_bytes, &x_bytes)
     }
 }
 
