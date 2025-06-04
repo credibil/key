@@ -52,7 +52,7 @@ mod encrypt;
 
 use anyhow::{Result, bail};
 use base64ct::{Base64UrlUnpadded, Encoding};
-use credibil_se::{AlgAlgorithm, EncAlgorithm, PublicKey};
+use credibil_ecc::{AlgAlgorithm, EncAlgorithm, PublicKey};
 use encrypt::JweBuilder;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -253,7 +253,7 @@ pub enum Zip {
 
 #[cfg(test)]
 mod test {
-    use credibil_se::Curve;
+    use credibil_ecc::Curve;
     use test_kms::{Keyring, KeyringReceiver};
 
     use super::*;

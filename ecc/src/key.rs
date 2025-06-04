@@ -1,5 +1,7 @@
 //! # Types for keys
 
+use std::str::FromStr;
+
 use anyhow::anyhow;
 use base64ct::{Base64UrlUnpadded, Encoding};
 use sha2::Digest;
@@ -37,21 +39,13 @@ impl From<[u8; 32]> for SecretKey {
     }
 }
 
-impl TryFrom<&str> for SecretKey {
-    type Error = anyhow::Error;
+impl FromStr for SecretKey {
+    type Err = anyhow::Error;
 
-    fn try_from(val: &str) -> Result<Self, Self::Error> {
-        let decoded = Base64UrlUnpadded::decode_vec(val)?;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let decoded = Base64UrlUnpadded::decode_vec(s)?;
         let bytes: [u8; 32] = decoded.try_into().map_err(|_| anyhow!("invalid key"))?;
         Ok(Self::from(bytes))
-    }
-}
-
-impl TryFrom<&String> for SecretKey {
-    type Error = anyhow::Error;
-
-    fn try_from(val: &String) -> Result<Self, Self::Error> {
-        Self::try_from(val.as_str())
     }
 }
 
@@ -112,7 +106,6 @@ impl From<SecretKey> for ed25519_dalek::SigningKey {
         Self::from_bytes(&val.0)
     }
 }
-
 
 /// A shared secret key that can be used to encrypt and decrypt messages.
 #[derive(Debug, Zeroize, ZeroizeOnDrop)]
@@ -308,8 +301,7 @@ impl TryFrom<PublicKey> for ed25519_dalek::VerifyingKey {
     type Error = anyhow::Error;
 
     fn try_from(val: PublicKey) -> anyhow::Result<Self> {
-        Self::from_bytes(&val.x)
-            .map_err(|e| anyhow!("unable to build verifying key: {e}"))
+        Self::from_bytes(&val.x).map_err(|e| anyhow!("unable to build verifying key: {e}"))
     }
 }
 

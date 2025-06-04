@@ -1,5 +1,5 @@
 [package]
-name = "credibil-se"
+name = "credibil-ecc"
 description = "Credibil information security utilities for signing, encryption and key management."
 license.workspace = true
 readme = "README.md"

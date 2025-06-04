@@ -14,7 +14,7 @@ use std::str::FromStr;
 
 use anyhow::{Result, anyhow, bail};
 use base64ct::{Base64UrlUnpadded, Encoding};
-use credibil_se::{Algorithm, Curve, PublicKey, Signer};
+use credibil_ecc::{Algorithm, Curve, PublicKey, Signer};
 use serde::{Deserialize, Serialize};
 
 use crate::KeyBinding;

@@ -1,9 +1,5 @@
 [workspace]
-members = [
-    "jose",
-    "se",
-    "crates/*",
-]
+members = ["jose", "ecc", "crates/*"]
 resolver = "3"
 
 [workspace.package]
@@ -31,7 +27,7 @@ nursery = "warn"
 [workspace.dependencies]
 anyhow = "1.0.98"
 base64ct = { version = "1.7.3", features = ["std"] }
-credibil-se = { path = "se" }
+credibil-ecc = { path = "ecc" }
 multibase = "0.9.1"
 rand = "0.8.5"
 serde = { version = "1.0.219", features = ["derive"] }

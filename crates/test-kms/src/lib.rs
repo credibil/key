@@ -4,7 +4,7 @@ mod blockstore;
 
 use anyhow::{anyhow, bail};
 use blockstore::Mockstore;
-use credibil_se::{
+use credibil_ecc::{
     Algorithm, Curve, PUBLIC_KEY_LENGTH, PublicKey, Receiver, SecretKey, SharedSecret, Signer,
 };
 use serde::{Deserialize, Serialize};
@@ -289,7 +289,7 @@ impl Keyring {
     }
 
     /// Get the private key for encryption from the keyring with the given ID.
-    /// 
+    ///
     /// Use `signing_key` to get a private key for signing.
     ///
     /// # Errors
@@ -320,9 +320,9 @@ impl Keyring {
     }
 
     /// Get the private key for signing from the keyring with the given ID.
-    /// 
+    ///
     /// Use `private_key` to get a private key for encryption.
-    /// 
+    ///
     /// # Errors
     /// Will return an error if the requested key cannot be retrieved from
     /// storage or cannot be converted from the stored bytes. Will also return
@@ -377,15 +377,11 @@ impl Keyring {
             stored_key.key.try_into().map_err(|_| anyhow!("cannot convert stored vec to slice"))?;
         let secret_key = SecretKey::from(secret_key_bytes);
         match stored_key.curve {
-            Curve::Ed25519 => {
-                Algorithm::EdDSA.try_sign(msg, secret_key)
-            }
+            Curve::Ed25519 => Algorithm::EdDSA.try_sign(msg, secret_key),
             Curve::X25519 => {
                 bail!("X25519 cannot be used for signing");
             }
-            Curve::Es256K => {
-                Algorithm::Es256K.try_sign(msg, secret_key)
-            }
+            Curve::Es256K => Algorithm::Es256K.try_sign(msg, secret_key),
             Curve::P256 => {
                 unimplemented!("P256 not implemented yet");
             }

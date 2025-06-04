@@ -22,7 +22,7 @@ workspace = true
 [dependencies]
 anyhow = "1.0.98"
 base64ct.workspace = true
-credibil-se.workspace = true
+credibil-ecc.workspace = true
 multibase.workspace = true
 rand.workspace = true
 serde.workspace = true
@@ -33,6 +33,5 @@ zeroize.workspace = true
 
 [dev-dependencies]
 hex = "0.4.3"
-tokio.workspace = true
-# test-kms = { path = "../ose/crates/test-kms" }
 test-kms.workspace = true
+tokio.workspace = true

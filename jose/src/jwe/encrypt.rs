@@ -2,7 +2,7 @@
 
 use anyhow::{Result, anyhow, bail};
 use base64ct::{Base64UrlUnpadded, Encoding};
-use credibil_se::{AlgAlgorithm, Curve, EncAlgorithm, KeyType, PUBLIC_KEY_LENGTH, PublicKey};
+use credibil_ecc::{AlgAlgorithm, Curve, EncAlgorithm, KeyType, PUBLIC_KEY_LENGTH, PublicKey};
 use serde::Serialize;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
