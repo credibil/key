@@ -27,7 +27,7 @@ multibase.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
-# zeroize.workspace = true
+zeroize.workspace = true
 
 [dev-dependencies]
 credibil-core.workspace = true
