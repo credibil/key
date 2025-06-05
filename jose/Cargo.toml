@@ -20,18 +20,16 @@ version = "0.1.2"
 workspace = true
 
 [dependencies]
-anyhow = "1.0.98"
+anyhow.workspace = true
 base64ct.workspace = true
 credibil-ecc.workspace = true
-multibase.workspace = true
+multibase = "0.9.1"
 serde.workspace = true
-serde_json.workspace = true
-tracing.workspace = true
+serde_json = { version = "1.0.140", features = ["alloc"] }
+tracing = "0.1.41"
 zeroize.workspace = true
 
 [dev-dependencies]
 credibil-core.workspace = true
-# credibil-keyring.workspace = true
 dashmap = "6.1.0"
-hex = "0.4.3"
 tokio.workspace = true

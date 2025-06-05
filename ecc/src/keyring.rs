@@ -6,12 +6,13 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha512};
 
 use crate::{
-    Algorithm, Curve, PUBLIC_KEY_LENGTH, PublicKey, Receiver, SecretKey, SharedSecret, Signer,
+    Algorithm, Curve, PUBLIC_KEY_LENGTH, PublicKey, Receiver, SECRET_KEY_LENGTH, SecretKey,
+    SharedSecret, Signer,
 };
 
 /// Keyring trait for managing signing and encryption keys.
 pub trait Keyring: Send + Sync {
-    /// The type of key entry managed by the keyring.
+    /// The type used for key entries managed by the keyring.
     type Entry: Signer + Receiver;
 
     /// Generate a key entry and add to the key ring.
@@ -45,7 +46,7 @@ pub struct Entry {
 impl Signer for Entry {
     async fn try_sign(&self, msg: &[u8]) -> Result<Vec<u8>> {
         let sk = self.secret_key.clone();
-        let bytes: [u8; PUBLIC_KEY_LENGTH] =
+        let bytes: [u8; SECRET_KEY_LENGTH] =
             sk.try_into().map_err(|_| anyhow!("issue converting secret key"))?;
         let secret_key = SecretKey::from(bytes);
 
@@ -59,7 +60,7 @@ impl Signer for Entry {
 
     async fn verifying_key(&self) -> Result<Vec<u8>> {
         let sk = self.secret_key.clone();
-        let bytes: [u8; PUBLIC_KEY_LENGTH] =
+        let bytes: [u8; SECRET_KEY_LENGTH] =
             sk.try_into().map_err(|_| anyhow!("cannot convert stored vec to slice"))?;
 
         match self.curve {
@@ -94,7 +95,7 @@ impl Receiver for Entry {
 
     async fn public_key(&self) -> Result<Vec<u8>> {
         let sk = self.secret_key.clone();
-        let bytes: [u8; PUBLIC_KEY_LENGTH] =
+        let bytes: [u8; SECRET_KEY_LENGTH] =
             sk.try_into().map_err(|_| anyhow!("cannot convert stored vec to slice"))?;
 
         match self.curve {
@@ -122,7 +123,7 @@ impl Receiver for Entry {
 
     async fn shared_secret(&self, sender_public: PublicKey) -> Result<SharedSecret> {
         let sk = self.secret_key.clone();
-        let mut bytes: [u8; PUBLIC_KEY_LENGTH] =
+        let mut bytes: [u8; SECRET_KEY_LENGTH] =
             sk.try_into().map_err(|_| anyhow!("issue converting secret key"))?;
 
         // convert Ed25519 secret key to X25519.

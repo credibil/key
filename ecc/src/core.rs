@@ -1,13 +1,15 @@
-//! # Types for keys
+//! # Primitive Cryptography Types
 
+use std::fmt::Display;
 use std::str::FromStr;
 
 use anyhow::{Result, anyhow};
 use base64ct::{Base64UrlUnpadded, Encoding};
+pub use ed25519_dalek::{PUBLIC_KEY_LENGTH, SECRET_KEY_LENGTH};
+use rand::rngs::OsRng;
+use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use zeroize::{Zeroize, ZeroizeOnDrop};
-
-use crate::PUBLIC_KEY_LENGTH;
 
 /// Prefix bytes (tag) to indicate a full public key.
 pub const TAG_PUBKEY_FULL: u8 = 0x04;
@@ -20,6 +22,76 @@ pub const X25519_CODEC: [u8; 2] = [0xec, 0x01];
 
 /// Alias for multi-base encoded string.
 pub type MultiKey = String;
+
+/// Cryptographic key type.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
+pub enum KeyType {
+    /// Octet key pair (Edwards curve)
+    #[default]
+    #[serde(rename = "OKP")]
+    Okp,
+
+    /// Elliptic curve key pair
+    #[serde(rename = "EC")]
+    Ec,
+
+    /// Octet string
+    #[serde(rename = "oct")]
+    Oct,
+}
+
+/// Cryptographic curve type.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
+pub enum Curve {
+    /// Ed25519 signature (DSA) key pairs.
+    #[default]
+    Ed25519,
+
+    /// X25519 function (encryption) key pairs.
+    X25519,
+
+    /// secp256k1 curve.
+    #[serde(rename = "ES256K", alias = "secp256k1")]
+    Es256K,
+
+    /// secp256r1 curve.
+    P256,
+}
+
+impl Curve {
+    /// Generate a new key for the given key type.
+    pub fn generate(&self) -> Vec<u8> {
+        match self {
+            Self::Ed25519 => {
+                let signing_key = ed25519_dalek::SigningKey::generate(&mut OsRng);
+                signing_key.as_bytes().to_vec()
+            }
+            Self::X25519 => {
+                let secret_key = x25519_dalek::StaticSecret::random_from_rng(OsRng);
+                secret_key.to_bytes().to_vec()
+            }
+            Self::Es256K => {
+                let (secret_key, _) = ecies::utils::generate_keypair();
+                secret_key.serialize().to_vec()
+            }
+            Self::P256 => {
+                let secret_key = p256::SecretKey::random(&mut OsRng);
+                secret_key.to_bytes().to_vec()
+            }
+        }
+    }
+}
+
+impl Display for Curve {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Ed25519 => write!(f, "Ed25519"),
+            Self::X25519 => write!(f, "X25519"),
+            Self::Es256K => write!(f, "ES256K"),
+            Self::P256 => write!(f, "P256"),
+        }
+    }
+}
 
 /// A secret key that can be used to compute a single `SharedSecret` or to
 /// sign a payload.
