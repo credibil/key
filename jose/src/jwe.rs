@@ -256,8 +256,7 @@ mod test {
     use std::sync::LazyLock;
 
     use anyhow::Result;
-    use credibil_core::datastore::Datastore;
-    use credibil_ecc::{Curve, Keyring, Receiver};
+    use credibil_ecc::{Curve, Keyring, Receiver, Vault};
     use dashmap::DashMap;
 
     use super::*;
@@ -372,7 +371,7 @@ mod test {
     #[derive(Clone, Debug)]
     struct Store;
 
-    impl Datastore for Store {
+    impl Vault for Store {
         async fn put(&self, owner: &str, partition: &str, key: &str, data: &[u8]) -> Result<()> {
             let key = format!("{owner}-{partition}-{key}");
             STORE.insert(key, data.to_vec());

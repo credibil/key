@@ -27,11 +27,7 @@ nursery = "warn"
 [workspace.dependencies]
 anyhow = "1.0.98"
 base64ct = { version = "1.8.0", features = ["std"] }
-credibil-core = { git = "https://github.com/credibil/vdc.git" }
 credibil-ecc = { path = "ecc" }
 serde = { version = "1.0.219", features = ["derive"] }
 tokio = { version = "1.45.1", features = ["macros", "rt-multi-thread"] }
 zeroize = "1.8.1"
-
-[patch."https://github.com/credibil/vdc.git"]
-credibil-core = { path = "../vdc/crates/core" }

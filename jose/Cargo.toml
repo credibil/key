@@ -30,6 +30,5 @@ tracing = "0.1.41"
 zeroize.workspace = true
 
 [dev-dependencies]
-credibil-core.workspace = true
 dashmap = "6.1.0"
 tokio.workspace = true

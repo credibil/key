@@ -1,11 +1,11 @@
 //! Key management
 
 use anyhow::{Result, anyhow, bail};
-use credibil_core::datastore::Datastore;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha512};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
+use crate::vault::Vault;
 use crate::{
     Algorithm, Curve, PUBLIC_KEY_LENGTH, PublicKey, Receiver, SECRET_KEY_LENGTH, SecretKey,
     SharedSecret, Signer,
@@ -143,7 +143,7 @@ impl Receiver for Entry {
     }
 }
 
-impl<T: Datastore> Keyring for T {
+impl<T: Vault> Keyring for T {
     type Entry = Entry;
 
     async fn generate(&self, owner: &str, key_id: &str, curve: Curve) -> Result<Self::Entry> {
@@ -156,13 +156,13 @@ impl<T: Datastore> Keyring for T {
 
         let mut data = Vec::new();
         ciborium::into_writer(&entry, &mut data).unwrap();
-        Datastore::put(self, owner, "VAULT", key_id, &data).await?;
+        Vault::put(self, owner, "VAULT", key_id, &data).await?;
 
         Ok(entry)
     }
 
     async fn entry(&self, owner: &str, key_id: &str) -> Result<Self::Entry> {
-        let Some(data) = Datastore::get(self, owner, "VAULT", key_id).await? else {
+        let Some(data) = Vault::get(self, owner, "VAULT", key_id).await? else {
             return Err(anyhow!("could not find issuer metadata"));
         };
         ciborium::from_reader(data.as_slice()).map_err(Into::into)
@@ -180,7 +180,7 @@ impl<T: Datastore> Keyring for T {
 
         let mut data = Vec::new();
         ciborium::into_writer(&entry, &mut data).unwrap();
-        Datastore::put(self, owner, "VAULT", key_id, &data).await?;
+        Vault::put(self, owner, "VAULT", key_id, &data).await?;
 
         Ok(new_entry)
     }
