@@ -2,15 +2,17 @@
 
 use anyhow::{Result, anyhow, bail};
 use credibil_core::datastore::Datastore;
-use credibil_ecc::{
-    Algorithm, Curve, PUBLIC_KEY_LENGTH, PublicKey, Receiver, SecretKey, SharedSecret, Signer,
-};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha512};
 
+use crate::{
+    Algorithm, Curve, PUBLIC_KEY_LENGTH, PublicKey, Receiver, SecretKey, SharedSecret, Signer,
+};
+
 /// Keyring trait for managing signing and encryption keys.
 pub trait Keyring: Send + Sync {
-    type Entry: Signer;
+    /// The type of key entry managed by the keyring.
+    type Entry: Signer + Receiver;
 
     /// Generate a key entry and add to the key ring.
     ///
@@ -31,6 +33,7 @@ pub trait Keyring: Send + Sync {
     -> impl Future<Output = Result<Self::Entry>> + Send;
 }
 
+/// Key entry for signing and encryption operations.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Entry {
     key_id: String,

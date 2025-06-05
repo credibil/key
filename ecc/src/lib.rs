@@ -5,19 +5,18 @@
 
 mod encrypt;
 mod key;
+mod keyring;
 mod sign;
 
 use std::fmt::Display;
 
 pub use ed25519_dalek::{PUBLIC_KEY_LENGTH, SECRET_KEY_LENGTH};
-pub use encrypt::{AlgAlgorithm, EncAlgorithm, Encrypted, EncryptedCek, Receiver};
-pub use key::{
-    ED25519_CODEC, MultiKey, PublicKey, SecretKey, SharedSecret, TAG_PUBKEY_FULL, X25519_CODEC,
-    derive_x25519_public, derive_x25519_public_from_secret, derive_x25519_secret,
-};
+pub use encrypt::*;
+pub use key::*;
+pub use keyring::*;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-pub use sign::{Algorithm, Signer};
+pub use sign::*;
 
 /// Cryptographic key type.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]

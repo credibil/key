@@ -257,8 +257,7 @@ mod test {
 
     use anyhow::Result;
     use credibil_core::datastore::Datastore;
-    use credibil_ecc::{Curve, Receiver};
-    use credibil_keyring::Keyring;
+    use credibil_ecc::{Curve, Keyring, Receiver};
     use dashmap::DashMap;
 
     use super::*;
