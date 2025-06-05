@@ -44,13 +44,10 @@ mod jwk;
 mod jws;
 mod jwt;
 
-use serde::{Deserialize, Serialize};
-
 pub use jwk::PublicKeyJwk;
-pub use jws::{
-    Jws, JwsBuilder, Protected, Signature, decode_jws, encode_jws,
-};
+pub use jws::{Jws, JwsBuilder, Protected, Signature, decode_jws, encode_jws};
 pub use jwt::Jwt;
+use serde::{Deserialize, Serialize};
 
 /// The type of Proof-of-Possession public key to use in key binding.
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]

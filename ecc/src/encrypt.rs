@@ -5,7 +5,7 @@ use std::fmt::Display;
 use aes_gcm::aead::KeyInit; // heapless,
 use aes_gcm::{AeadCore, AeadInPlace, Aes256Gcm, Key, Nonce, Tag};
 use aes_kw::Kek;
-use anyhow::{anyhow, bail};
+use anyhow::{Result, anyhow, bail};
 use chacha20poly1305::XChaCha20Poly1305;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
@@ -19,7 +19,10 @@ pub trait Receiver: Send + Sync {
     /// a multi-recipient payload.
     ///
     /// For example, `did:example:alice#key-id`.
-    fn key_id(&self) -> impl Future<Output = anyhow::Result<String>> + Send;
+    fn key_id(&self) -> impl Future<Output = Result<String>> + Send;
+
+    /// The Receiver's public key used to derive the shared secret.
+    fn public_key(&self) -> impl Future<Output = Result<Vec<u8>>> + Send;
 
     /// Derive the receiver's shared secret used for decrypting (or direct use)
     /// for the Content Encryption Key.
@@ -58,14 +61,14 @@ pub trait Receiver: Send + Sync {
     ///         "did:example:alice#key-id".to_string()
     ///    }
     ///
-    /// async fn shared_secret(&self, sender_public: PublicKey) -> anyhow::Result<SharedSecret> {
+    /// async fn shared_secret(&self, sender_public: PublicKey) -> Result<SharedSecret> {
     ///     let secret_key = SecretKey::from(self.secret.to_bytes());
     ///     secret_key.shared_secret(sender_public)
     /// }
     /// ```
     fn shared_secret(
         &self, sender_public: PublicKey,
-    ) -> impl Future<Output = anyhow::Result<SharedSecret>> + Send;
+    ) -> impl Future<Output = Result<SharedSecret>> + Send;
 }
 
 /// Encrypted content.
@@ -113,7 +116,7 @@ impl EncAlgorithm {
     /// Will return an error if the lower-level decryption fails.
     pub fn decrypt(
         &self, ciphertext: &[u8], cek: &[u8], iv: &[u8], aad: &[u8], tag: &[u8],
-    ) -> anyhow::Result<Vec<u8>> {
+    ) -> Result<Vec<u8>> {
         match self {
             Self::A256Gcm => {
                 let mut buffer = ciphertext.to_vec();
@@ -138,7 +141,7 @@ impl EncAlgorithm {
     /// Will return an error if the lower-level encryption fails.
     pub fn encrypt(
         &self, plaintext: &[u8], cek: &[u8; PUBLIC_KEY_LENGTH], aad: &[u8],
-    ) -> anyhow::Result<Encrypted> {
+    ) -> Result<Encrypted> {
         let mut buffer = plaintext.to_vec();
         let (nonce, tag) = match self {
             Self::A256Gcm => {
@@ -209,7 +212,7 @@ impl AlgAlgorithm {
     pub fn decrypt(
         &self, shared_secret: &SharedSecret, encrypted_key: Option<&[u8]>,
         init_vector: Option<&[u8]>, tag: Option<&[u8]>,
-    ) -> anyhow::Result<Vec<u8>> {
+    ) -> Result<Vec<u8>> {
         match self {
             Self::EcdhEs => {
                 let decrypted_key = shared_secret.to_bytes().to_vec();
@@ -254,15 +257,12 @@ impl AlgAlgorithm {
     /// The first return value if the CEK and the second return value is an
     /// ephemeral public key if supported by the algorithm (if will be empty if
     /// not)
-    /// 
     // TODO: Review this business logic to use x25519 vs Aes256Gcm. Does it
     // come from specification? Might be better to just have this function at
     // the top level (not in the enum) and the caller specifies an algorithm
     // to use for key generation.
     #[must_use]
-    pub fn generate_cek(
-        &self, recipient_key: &PublicKey,
-    ) -> ([u8; PUBLIC_KEY_LENGTH], PublicKey) {
+    pub fn generate_cek(&self, recipient_key: &PublicKey) -> ([u8; PUBLIC_KEY_LENGTH], PublicKey) {
         match self {
             Self::EcdhEs => {
                 let ephemeral_secret = EphemeralSecret::random_from_rng(rand::thread_rng());
@@ -284,7 +284,7 @@ impl AlgAlgorithm {
     /// Will return an error if the lower-level encryption fails.
     pub fn encrypt(
         &self, cek: &[u8; PUBLIC_KEY_LENGTH], recipient_key: &PublicKey,
-    ) -> anyhow::Result<EncryptedCek> {
+    ) -> Result<EncryptedCek> {
         match self {
             Self::EcdhEs => {
                 let ephemeral_secret = EphemeralSecret::random_from_rng(rand::thread_rng());

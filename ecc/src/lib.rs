@@ -3,22 +3,21 @@
 //! This crate provides common utilities for the Credibil project and is not
 //! intended to be used directly.
 
-mod encryption;
+mod encrypt;
 mod key;
-mod signing;
+mod sign;
 
 use std::fmt::Display;
 
-use rand::rngs::OsRng;
-use serde::{Deserialize, Serialize};
-
 pub use ed25519_dalek::{PUBLIC_KEY_LENGTH, SECRET_KEY_LENGTH};
-pub use encryption::{AlgAlgorithm, EncAlgorithm, Encrypted, EncryptedCek, Receiver};
+pub use encrypt::{AlgAlgorithm, EncAlgorithm, Encrypted, EncryptedCek, Receiver};
 pub use key::{
     ED25519_CODEC, MultiKey, PublicKey, SecretKey, SharedSecret, TAG_PUBKEY_FULL, X25519_CODEC,
     derive_x25519_public, derive_x25519_public_from_secret, derive_x25519_secret,
 };
-pub use signing::{Algorithm, Signer};
+use rand::rngs::OsRng;
+use serde::{Deserialize, Serialize};
+pub use sign::{Algorithm, Signer};
 
 /// Cryptographic key type.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]

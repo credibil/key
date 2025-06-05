@@ -27,8 +27,7 @@ where
 /// # Errors
 ///
 /// Returns an error if the JWE cannot be decrypted.
-pub async fn decrypt_bytes(jwe: &Jwe, receiver: &impl Receiver) -> Result<Vec<u8>>
-{
+pub async fn decrypt_bytes(jwe: &Jwe, receiver: &impl Receiver) -> Result<Vec<u8>> {
     let recipient = match &jwe.recipients {
         Recipients::One(recipient) => recipient,
         Recipients::Many { recipients } => {

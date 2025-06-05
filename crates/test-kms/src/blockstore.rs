@@ -37,12 +37,7 @@ impl Mockstore {
         Ok(BLOCKSTORE.remove(&cid).await?)
     }
 
-    pub async fn exists(
-        &self,
-        owner: &str,
-        partition: &str,
-        key: &str,
-    ) -> Result<bool> {
+    pub async fn exists(&self, owner: &str, partition: &str, key: &str) -> Result<bool> {
         let cid = unique_cid(owner, partition, key)?;
         Ok(BLOCKSTORE.has(&cid).await?)
     }

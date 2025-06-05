@@ -29,15 +29,11 @@ impl Display for Algorithm {
 /// Verifications
 impl Algorithm {
     /// Sign a message with the given signing key.
-    /// 
+    ///
     /// # Errors
     /// Will return an error if the signing key is not the correct format for
     /// the type of algorithm or if the underlying signing operation fails.
-    pub fn try_sign(
-        &self,
-        msg: &[u8],
-        signing_key: SecretKey,
-    ) -> anyhow::Result<Vec<u8>> {
+    pub fn try_sign(&self, msg: &[u8], signing_key: SecretKey) -> anyhow::Result<Vec<u8>> {
         match self {
             Self::Es256K => {
                 let sk: ecdsa::SigningKey<k256::Secp256k1> = signing_key.try_into()?;
