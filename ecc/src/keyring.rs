@@ -4,6 +4,7 @@ use anyhow::{Result, anyhow, bail};
 use credibil_core::datastore::Datastore;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha512};
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::{
     Algorithm, Curve, PUBLIC_KEY_LENGTH, PublicKey, Receiver, SECRET_KEY_LENGTH, SecretKey,
@@ -35,9 +36,11 @@ pub trait Keyring: Send + Sync {
 }
 
 /// Key entry for signing and encryption operations.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Zeroize, ZeroizeOnDrop)]
 pub struct Entry {
+    #[zeroize(skip)]
     key_id: String,
+    #[zeroize(skip)]
     curve: Curve,
     secret_key: Vec<u8>,
     next_secret_key: Vec<u8>,
