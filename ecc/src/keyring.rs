@@ -31,8 +31,7 @@ pub trait Keyring: Send + Sync {
     ///
     /// This will result in the active key being archived, the next key being
     /// actived, and a new `next_key` being generated.
-    fn rotate(&self, owner: &str, key_id: &str)
-    -> impl Future<Output = Result<Self::Entry>> + Send;
+    fn rotate(&self, entry: Self::Entry) -> impl Future<Output = Result<Self::Entry>> + Send;
 
     /// List the key ids for all keyring entries.
     fn key_ids(&self, owner: &str) -> impl Future<Output = Result<Vec<String>>> + Send;
@@ -47,6 +46,8 @@ pub trait NextKey: Send + Sync {
 /// Key entry for signing and encryption operations.
 #[derive(Debug, Clone, Deserialize, Serialize, Zeroize, ZeroizeOnDrop)]
 pub struct Entry {
+    #[zeroize(skip)]
+    owner: String,
     #[zeroize(skip)]
     key_id: String,
     #[zeroize(skip)]
@@ -224,6 +225,7 @@ impl<T: Vault> Keyring for T {
 
     async fn generate(&self, owner: &str, key_id: &str, curve: Curve) -> Result<Self::Entry> {
         let entry = Entry {
+            owner: owner.to_string(),
             key_id: key_id.to_string(),
             curve: curve.clone(),
             secret_key: curve.generate(),
@@ -241,19 +243,19 @@ impl<T: Vault> Keyring for T {
         Entry::from_bytes(&data)
     }
 
-    async fn rotate(&self, owner: &str, key_id: &str) -> Result<Self::Entry> {
-        let entry = self.entry(owner, key_id).await?;
+    async fn rotate(&self, entry: Self::Entry) -> Result<Self::Entry> {
+        let key_id = entry.key_id.clone();
+        let owner = entry.owner.clone();
 
         let new_entry = Entry {
-            key_id: key_id.to_string(),
+            owner: owner.clone(),
+            key_id: key_id.clone(),
             curve: entry.curve.clone(),
             secret_key: entry.next_secret_key.clone(),
             next_secret_key: entry.curve.generate(),
         };
 
-        let mut data = Vec::new();
-        ciborium::into_writer(&new_entry, &mut data).unwrap();
-        Vault::put(self, owner, "VAULT", key_id, &data).await?;
+        Vault::put(self, &owner, "VAULT", &key_id, &new_entry.to_bytes()?).await?;
 
         Ok(new_entry)
     }
