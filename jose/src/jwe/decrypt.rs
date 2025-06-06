@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 use anyhow::{Result, anyhow};
 use base64ct::{Base64UrlUnpadded, Encoding};
-use credibil_se::{PublicKey, Receiver, TAG_PUBKEY_FULL};
+use credibil_ecc::{PublicKey, Receiver, TAG_PUBKEY_FULL};
 use serde::de::DeserializeOwned;
 
 use crate::jwe::{Header, Jwe, KeyEncryption, Protected, ProtectedFlat, Recipients};
@@ -27,8 +27,7 @@ where
 /// # Errors
 ///
 /// Returns an error if the JWE cannot be decrypted.
-pub async fn decrypt_bytes(jwe: &Jwe, receiver: &impl Receiver) -> Result<Vec<u8>>
-{
+pub async fn decrypt_bytes(jwe: &Jwe, receiver: &impl Receiver) -> Result<Vec<u8>> {
     let recipient = match &jwe.recipients {
         Recipients::One(recipient) => recipient,
         Recipients::Many { recipients } => {

@@ -4,7 +4,7 @@ mod blockstore;
 
 use anyhow::{anyhow, bail};
 use blockstore::Mockstore;
-use credibil_se::{
+use credibil_ecc::{
     Algorithm, Curve, PUBLIC_KEY_LENGTH, PublicKey, Receiver, SecretKey, SharedSecret, Signer,
 };
 use serde::{Deserialize, Serialize};
@@ -109,8 +109,8 @@ impl Keyring {
     ///
     /// # Errors
     /// Will return an error if storage of an index block fails.
-    pub async fn new(owner: impl ToString) -> anyhow::Result<Self> {
-        let owner = owner.to_string();
+    pub async fn new(owner: impl Into<String>) -> anyhow::Result<Self> {
+        let owner: String = owner.into();
         let blockstore = Mockstore::new();
         let index = KeyringIndex::new();
         let index_bytes = index.to_bytes();
@@ -125,8 +125,9 @@ impl Keyring {
     /// Will return an error if the storage fails or the index cannot be
     /// updated. Will also return an error if the key already exists (use
     /// `replace` instead).
-    pub async fn add(&mut self, curve: &Curve, id: impl ToString) -> anyhow::Result<()> {
-        if self.blockstore.exists(&self.owner, "", &id.to_string()).await? {
+    pub async fn add(&mut self, curve: &Curve, id: impl Into<String>) -> anyhow::Result<()> {
+        let id = id.into();
+        if self.blockstore.exists(&self.owner, "", &id).await? {
             bail!("key already exists");
         }
         let key_bytes = curve.generate();
@@ -136,7 +137,7 @@ impl Keyring {
             key: key_bytes.clone(),
             next_key: next_key_bytes.clone(),
         };
-        self.blockstore.put(&self.owner, "", &id.to_string(), &stored_key.to_bytes()).await?;
+        self.blockstore.put(&self.owner, "", &id, &stored_key.to_bytes()).await?;
 
         // Update the index.
         self.add_index_entry(id).await?;
@@ -150,14 +151,15 @@ impl Keyring {
     /// # Errors
     /// Will return an error if the requested key does not exist in the keyring.
     /// (Use `add` instead).
-    pub async fn replace(&mut self, id: impl ToString) -> anyhow::Result<()> {
+    pub async fn replace(&mut self, id: impl Into<String>) -> anyhow::Result<()> {
+        let id = id.into();
         // Check for existence of the key
-        let existing = self.blockstore.get(&self.owner, "", &id.to_string()).await?;
+        let existing = self.blockstore.get(&self.owner, "", &id).await?;
         let Some(existing) = existing else {
             bail!("key not found");
         };
         let existing = StoredKey::from_bytes(&existing)?;
-        self.blockstore.delete(&self.owner, "", &id.to_string()).await?;
+        self.blockstore.delete(&self.owner, "", &id).await?;
         self.add(&existing.curve, id).await
     }
 
@@ -167,8 +169,11 @@ impl Keyring {
     /// # Errors
     /// Will return an error if the requested key cannot be added to the
     /// underlying storage.
-    pub async fn add_or_replace(&mut self, curve: &Curve, id: impl ToString) -> anyhow::Result<()> {
-        if self.blockstore.exists(&self.owner, "", &id.to_string()).await? {
+    pub async fn add_or_replace(
+        &mut self, curve: &Curve, id: impl Into<String>,
+    ) -> anyhow::Result<()> {
+        let id = id.into();
+        if self.blockstore.exists(&self.owner, "", &id).await? {
             self.replace(id).await
         } else {
             self.add(curve, id).await
@@ -209,12 +214,10 @@ impl Keyring {
     ///
     /// # Errors
     /// Will return an error if the requested key does not exist in the keyring.
-    pub async fn rotate(&mut self, id: impl ToString) -> anyhow::Result<()> {
-        let current_key = self
-            .blockstore
-            .get(&self.owner, "", &id.to_string())
-            .await?
-            .ok_or(anyhow!("key not found"))?;
+    pub async fn rotate(&mut self, id: impl Into<String>) -> anyhow::Result<()> {
+        let id = id.into();
+        let current_key =
+            self.blockstore.get(&self.owner, "", &id).await?.ok_or(anyhow!("key not found"))?;
         let current_key = StoredKey::from_bytes(&current_key)?;
         let next_key = current_key.curve.generate();
         let new_key = StoredKey {
@@ -222,8 +225,8 @@ impl Keyring {
             key: current_key.next_key,
             next_key,
         };
-        self.blockstore.delete(&self.owner, "", &id.to_string()).await?;
-        self.blockstore.put(&self.owner, "", &id.to_string(), &new_key.to_bytes()).await
+        self.blockstore.delete(&self.owner, "", &id).await?;
+        self.blockstore.put(&self.owner, "", &id, &new_key.to_bytes()).await
     }
 
     /// Remove a key from the keyring.
@@ -231,8 +234,9 @@ impl Keyring {
     /// # Errors
     /// Will return an error if the requested key cannot be removed from storage
     /// or the index cannot be updated.
-    pub async fn remove(&mut self, id: impl ToString) -> anyhow::Result<()> {
-        self.blockstore.delete(&self.owner, "", &id.to_string()).await?;
+    pub async fn remove(&mut self, id: impl Into<String>) -> anyhow::Result<()> {
+        let id = id.into();
+        self.blockstore.delete(&self.owner, "", &id).await?;
         self.remove_index_entry(id).await
     }
 
@@ -244,12 +248,10 @@ impl Keyring {
     /// # Errors
     /// Will return an error if the requested key cannot be retrieved from
     /// storage or if the public key cannot be inferred from the private key.
-    pub async fn public_key(&self, id: impl ToString) -> anyhow::Result<PublicKey> {
-        let stored_key = self
-            .blockstore
-            .get(&self.owner, "", &id.to_string())
-            .await?
-            .ok_or(anyhow!("key not found"))?;
+    pub async fn public_key(&self, id: impl Into<String>) -> anyhow::Result<PublicKey> {
+        let id = id.into();
+        let stored_key =
+            self.blockstore.get(&self.owner, "", &id).await?.ok_or(anyhow!("key not found"))?;
         let stored_key = StoredKey::from_bytes(&stored_key)?;
         match stored_key.curve {
             Curve::Ed25519 => {
@@ -289,18 +291,16 @@ impl Keyring {
     }
 
     /// Get the private key for encryption from the keyring with the given ID.
-    /// 
+    ///
     /// Use `signing_key` to get a private key for signing.
     ///
     /// # Errors
     /// Will return an error if the requested key cannot be retrieved from
     /// storage or cannot be converted from the stored bytes.
-    pub async fn private_key(&self, id: impl ToString) -> anyhow::Result<SecretKey> {
-        let stored_key = self
-            .blockstore
-            .get(&self.owner, "", &id.to_string())
-            .await?
-            .ok_or(anyhow!("key not found"))?;
+    pub async fn private_key(&self, id: impl Into<String>) -> anyhow::Result<SecretKey> {
+        let id = id.into();
+        let stored_key =
+            self.blockstore.get(&self.owner, "", &id).await?.ok_or(anyhow!("key not found"))?;
         let stored_key = StoredKey::from_bytes(&stored_key)?;
         let mut secret_key_bytes: [u8; PUBLIC_KEY_LENGTH] =
             stored_key.key.try_into().map_err(|_| anyhow!("cannot convert stored vec to slice"))?;
@@ -320,19 +320,17 @@ impl Keyring {
     }
 
     /// Get the private key for signing from the keyring with the given ID.
-    /// 
+    ///
     /// Use `private_key` to get a private key for encryption.
-    /// 
+    ///
     /// # Errors
     /// Will return an error if the requested key cannot be retrieved from
     /// storage or cannot be converted from the stored bytes. Will also return
     /// an error if the key's curve type is not supported for signing.
-    pub async fn signing_key(&self, id: impl ToString) -> anyhow::Result<SecretKey> {
-        let stored_key = self
-            .blockstore
-            .get(&self.owner, "", &id.to_string())
-            .await?
-            .ok_or(anyhow!("key not found"))?;
+    pub async fn signing_key(&self, id: impl Into<String>) -> anyhow::Result<SecretKey> {
+        let id = id.into();
+        let stored_key =
+            self.blockstore.get(&self.owner, "", &id).await?.ok_or(anyhow!("key not found"))?;
         let stored_key = StoredKey::from_bytes(&stored_key)?;
         let secret_key_bytes: [u8; PUBLIC_KEY_LENGTH] =
             stored_key.key.try_into().map_err(|_| anyhow!("cannot convert stored vec to slice"))?;
@@ -349,12 +347,10 @@ impl Keyring {
     /// # Errors
     /// Will return an error if the requested key cannot be retrieved from
     /// storage.
-    pub async fn curve(&self, id: impl ToString) -> anyhow::Result<Curve> {
-        let stored_key = self
-            .blockstore
-            .get(&self.owner, "", &id.to_string())
-            .await?
-            .ok_or(anyhow!("key not found"))?;
+    pub async fn curve(&self, id: impl Into<String>) -> anyhow::Result<Curve> {
+        let id = id.into();
+        let stored_key =
+            self.blockstore.get(&self.owner, "", &id).await?.ok_or(anyhow!("key not found"))?;
         let stored_key = StoredKey::from_bytes(&stored_key)?;
         Ok(stored_key.curve)
     }
@@ -366,26 +362,20 @@ impl Keyring {
     /// storage or if the key cannot be converted to a signing key (including
     /// if the key is not a signing key or the key's algorithm is not currently
     /// supported).
-    pub async fn sign(&self, id: impl ToString, msg: &[u8]) -> anyhow::Result<Vec<u8>> {
-        let stored_key = self
-            .blockstore
-            .get(&self.owner, "", &id.to_string())
-            .await?
-            .ok_or(anyhow!("key not found"))?;
+    pub async fn sign(&self, id: impl Into<String>, msg: &[u8]) -> anyhow::Result<Vec<u8>> {
+        let id = id.into();
+        let stored_key =
+            self.blockstore.get(&self.owner, "", &id).await?.ok_or(anyhow!("key not found"))?;
         let stored_key = StoredKey::from_bytes(&stored_key)?;
         let secret_key_bytes: [u8; PUBLIC_KEY_LENGTH] =
             stored_key.key.try_into().map_err(|_| anyhow!("cannot convert stored vec to slice"))?;
         let secret_key = SecretKey::from(secret_key_bytes);
         match stored_key.curve {
-            Curve::Ed25519 => {
-                Algorithm::EdDSA.try_sign(msg, secret_key)
-            }
+            Curve::Ed25519 => Algorithm::EdDSA.try_sign(msg, secret_key),
             Curve::X25519 => {
                 bail!("X25519 cannot be used for signing");
             }
-            Curve::Es256K => {
-                Algorithm::Es256K.try_sign(msg, secret_key)
-            }
+            Curve::Es256K => Algorithm::Es256K.try_sign(msg, secret_key),
             Curve::P256 => {
                 unimplemented!("P256 not implemented yet");
             }
@@ -398,8 +388,9 @@ impl Keyring {
     /// Will return an error if the requested key cannot be retrieved from
     /// storage or if the key cannot be converted to a signing key (including
     /// if the key's algorithm is not currently supported).
-    pub async fn verifying_key(&self, id: impl ToString) -> anyhow::Result<Vec<u8>> {
-        self.vk(&id.to_string(), false).await
+    pub async fn verifying_key(&self, id: impl Into<String>) -> anyhow::Result<Vec<u8>> {
+        let id = id.into();
+        self.vk(&id, false).await
     }
 
     /// Get the next verifying key on key rotation for the key with the given ID.
@@ -408,8 +399,9 @@ impl Keyring {
     /// Will return an error if the requested key cannot be retrieved from
     /// storage or if the key cannot be converted to a signing key (including
     /// if the key's algorithm is not currently supported).
-    pub async fn next_verifying_key(&self, id: impl ToString) -> anyhow::Result<Vec<u8>> {
-        self.vk(&id.to_string(), true).await
+    pub async fn next_verifying_key(&self, id: impl Into<String>) -> anyhow::Result<Vec<u8>> {
+        let id = id.into();
+        self.vk(&id, true).await
     }
 
     // Get a verifying key for the keyring key with the given ID if possible.
@@ -450,11 +442,11 @@ impl Keyring {
     ///
     /// # Errors
     /// Will return an error if the index cannot be updated.
-    async fn add_index_entry(&mut self, id: impl ToString) -> anyhow::Result<()> {
+    async fn add_index_entry(&mut self, id: impl Into<String>) -> anyhow::Result<()> {
         let entry = IndexEntry {
             owner: self.owner.clone(),
             partition: "".to_string(),
-            id: id.to_string(),
+            id: id.into(),
         };
         let mut index = KeyringIndex::from_bytes(
             &self
@@ -472,11 +464,11 @@ impl Keyring {
     ///
     /// # Errors
     /// Will return an error if the index cannot be updated.
-    async fn remove_index_entry(&mut self, id: impl ToString) -> anyhow::Result<()> {
+    async fn remove_index_entry(&mut self, id: impl Into<String>) -> anyhow::Result<()> {
         let entry = IndexEntry {
             owner: self.owner.clone(),
             partition: "".to_string(),
-            id: id.to_string(),
+            id: id.into(),
         };
         let mut index = KeyringIndex::from_bytes(
             &self
@@ -505,9 +497,9 @@ pub struct KeyringReceiver {
 impl KeyringReceiver {
     /// Create a new keyring receiver.
     #[must_use]
-    pub fn new(key_id: impl ToString, keyring: Keyring) -> Self {
+    pub fn new(key_id: impl Into<String>, keyring: Keyring) -> Self {
         Self {
-            key_id: key_id.to_string(),
+            key_id: key_id.into(),
             keyring,
         }
     }
@@ -517,6 +509,10 @@ impl KeyringReceiver {
 impl Receiver for KeyringReceiver {
     async fn key_id(&self) -> anyhow::Result<String> {
         Ok(self.key_id.clone())
+    }
+
+    async fn public_key(&self) -> anyhow::Result<Vec<u8>> {
+        Ok(self.keyring.public_key(&self.key_id).await?.to_bytes().to_vec())
     }
 
     async fn shared_secret(&self, sender_public: PublicKey) -> anyhow::Result<SharedSecret> {
@@ -539,9 +535,9 @@ pub struct KeyringSigner {
 impl KeyringSigner {
     /// Create a new keyring signer.
     #[must_use]
-    pub fn new(key_id: impl ToString, keyring: Keyring) -> Self {
+    pub fn new(key_id: impl Into<String>, keyring: Keyring) -> Self {
         Self {
-            key_id: key_id.to_string(),
+            key_id: key_id.into(),
             keyring,
         }
     }

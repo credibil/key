@@ -1,9 +1,5 @@
 [workspace]
-members = [
-    "jose",
-    "se",
-    "crates/*",
-]
+members = ["jose", "ecc"]
 resolver = "3"
 
 [workspace.package]
@@ -30,14 +26,8 @@ nursery = "warn"
 
 [workspace.dependencies]
 anyhow = "1.0.98"
-base64ct = { version = "1.7.3", features = ["std"] }
-credibil-se = { path = "se" }
-multibase = "0.9.1"
-rand = "0.8.5"
+base64ct = { version = "1.8.0", features = ["std"] }
+credibil-ecc = { path = "ecc" }
 serde = { version = "1.0.219", features = ["derive"] }
-serde_json = { version = "1.0.140", features = ["alloc"] }
-serde_repr = "0.1"
-test-kms = { path = "crates/test-kms" }
-tokio = { version = "1.44.2", features = ["macros", "rt-multi-thread"] }
-tracing = "0.1.41"
+tokio = { version = "1.45.1", features = ["macros", "rt-multi-thread"] }
 zeroize = "1.8.1"

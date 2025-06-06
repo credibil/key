@@ -52,14 +52,14 @@ mod encrypt;
 
 use anyhow::{Result, bail};
 use base64ct::{Base64UrlUnpadded, Encoding};
-use credibil_se::{AlgAlgorithm, EncAlgorithm, PublicKey};
+use credibil_ecc::{AlgAlgorithm, EncAlgorithm, PublicKey};
+pub use decrypt::{decrypt, decrypt_bytes};
 use encrypt::JweBuilder;
+pub use encrypt::{Recipient, ecdh_a256kw, ecies_es256k};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::jwk::PublicKeyJwk;
-pub use decrypt::{decrypt, decrypt_bytes};
-pub use encrypt::{Recipient, ecdh_a256kw, ecies_es256k};
 
 /// Encrypt plaintext using the defaults of A256GCM content encryption and
 /// ECDH-ES key agreement algorithms where the payload is a JSON-serializable
@@ -253,124 +253,152 @@ pub enum Zip {
 
 #[cfg(test)]
 mod test {
-    use credibil_se::Curve;
-    use test_kms::{Keyring, KeyringReceiver};
+    use std::sync::LazyLock;
+
+    use anyhow::Result;
+    use credibil_ecc::{Curve, Keyring, Receiver, Vault};
+    use dashmap::DashMap;
 
     use super::*;
 
     // Use top-level encrypt method to shortcut using the builder
     #[tokio::test]
     async fn simple() {
-        let mut key_store = Keyring::new("simple").await.expect("create keyring");
-        key_store.add(&Curve::X25519, "encription-key-1").await.expect("add key");
+        let entry = Keyring::generate(&Store, "owner", "key-1", Curve::X25519).await.unwrap();
+        let public_key = entry.public_key().await.expect("should get key");
+        let pk = PublicKey::try_from(public_key).expect("should convert");
 
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
-        let public_key = key_store.public_key("encription-key-1").await.expect("get public key");
-        let jwe = encrypt(&plaintext, public_key).expect("should encrypt");
+        let jwe = encrypt(plaintext, pk).expect("should encrypt");
 
-        let receiver = KeyringReceiver::new("encription-key-1", key_store.clone());
-        let decrypted: String = decrypt(&jwe, &receiver).await.expect("should decrypt");
+        let decrypted: String = decrypt(&jwe, &entry).await.expect("should decrypt");
         assert_eq!(plaintext, decrypted);
     }
 
     // Compact serialization/deserialization
     #[tokio::test]
     async fn compact() {
-        let mut key_store = Keyring::new("compact").await.expect("create keyring");
-        key_store.add(&Curve::X25519, "encription-key-1").await.expect("add key");
+        let entry = Keyring::generate(&Store, "owner", "key-1", Curve::X25519).await.unwrap();
+        let public_key = entry.public_key().await.expect("should get key");
+        let pk = PublicKey::try_from(public_key).expect("should convert");
 
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
-        let public_key = key_store.public_key("encription-key-1").await.expect("get public key");
-        let jwe = encrypt(&plaintext, public_key).expect("should encrypt");
+        let jwe = encrypt(plaintext, pk).expect("should encrypt");
 
         // serialize/deserialize
-        let compact_jwe = jwe.encode().expect("should encode jwe");
+        let compact_jwe = jwe.encode().expect("should encode");
         let jwe: Jwe = compact_jwe.parse().expect("should parse");
 
-        let receiver = KeyringReceiver::new("encription-key-1", key_store.clone());
-        let decrypted: String = decrypt(&jwe, &receiver).await.expect("should decrypt");
+        let decrypted: String = decrypt(&jwe, &entry).await.expect("should decrypt");
         assert_eq!(plaintext, decrypted);
     }
 
     // round trip: encrypt and then decrypt
     #[tokio::test]
     async fn default() {
-        let mut key_store = Keyring::new("default").await.expect("create keyring");
-        key_store.add(&Curve::X25519, "encription-key-1").await.expect("add key");
+        let entry = Keyring::generate(&Store, "owner", "key-1", Curve::X25519).await.unwrap();
+        let public_key = entry.public_key().await.expect("should get key");
+        let pk = PublicKey::try_from(public_key).expect("should convert");
 
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
-        let public_key = key_store.public_key("encription-key-1").await.expect("get public key");
-
         let jwe = JweBuilder::new()
             .payload(&plaintext)
-            .add_recipient("did:example:alice#key-id", public_key)
+            .add_recipient("did:example:alice#key-id", pk)
             .build()
             .expect("should encrypt");
 
-        let receiver = KeyringReceiver::new("encription-key-1", key_store.clone());
-        let decrypted: String = decrypt(&jwe, &receiver).await.expect("should decrypt");
+        let decrypted: String = decrypt(&jwe, &entry).await.expect("should decrypt");
         assert_eq!(plaintext, decrypted);
     }
 
     #[tokio::test]
     async fn ecdh_es_a256kw() {
-        let mut key_store = Keyring::new("ecdh_es_a256kw").await.expect("create keyring");
-        key_store.add(&Curve::X25519, "did:example:alice#key-id").await.expect("add key");
+        let entry = Keyring::generate(&Store, "owner", "key-1", Curve::X25519).await.unwrap();
+        let public_key = entry.public_key().await.expect("should get key");
+        let pk = PublicKey::try_from(public_key).expect("should convert");
 
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
-        let public_key =
-            key_store.public_key("did:example:alice#key-id").await.expect("get public key");
-
         let jwe = JweBuilder::new()
             .content_algorithm(EncAlgorithm::A256Gcm)
             .key_algorithm(AlgAlgorithm::EcdhEsA256Kw)
             .payload(&plaintext)
-            .add_recipient("did:example:alice#key-id", public_key)
+            .add_recipient("key-1", pk)
             .build()
             .expect("should encrypt");
 
-        let receiver = KeyringReceiver::new("did:example:alice#key-id", key_store.clone());
-        let decrypted: String = decrypt(&jwe, &receiver).await.expect("should decrypt");
+        let decrypted: String = decrypt(&jwe, &entry).await.expect("should decrypt");
         assert_eq!(plaintext, decrypted);
     }
 
     #[tokio::test]
     async fn ed25519() {
-        let mut key_store = Keyring::new("ed25519").await.expect("create keyring");
-        key_store.add(&Curve::Ed25519, "did:example:alice#key-id").await.expect("add key");
-        let plaintext = "The true sign of intelligence is not knowledge but imagination.";
-        let public_key =
-            key_store.public_key("did:example:alice#key-id").await.expect("get public key");
+        let entry = Keyring::generate(&Store, "owner", "key-1", Curve::Ed25519).await.unwrap();
+        let public_key = entry.public_key().await.expect("should get key");
+        let pk = PublicKey::try_from(public_key).expect("should convert");
 
+        let plaintext = "The true sign of intelligence is not knowledge but imagination.";
         let jwe = JweBuilder::new()
             .payload(&plaintext)
-            .add_recipient("did:example:alice#key-id", public_key)
+            .add_recipient("key-1", pk)
             .build()
             .expect("should encrypt");
 
-        let receiver = KeyringReceiver::new("did:example:alice#key-id", key_store.clone());
-        let decrypted: String = decrypt(&jwe, &receiver).await.expect("should decrypt");
+        let decrypted: String = decrypt(&jwe, &entry).await.expect("should decrypt");
         assert_eq!(plaintext, decrypted);
     }
 
     #[tokio::test]
     async fn ecies_es256k() {
-        let mut key_store = Keyring::new("ecies_es256k").await.expect("create keyring");
-        key_store.add(&Curve::Es256K, "did:example:alice#key-id").await.expect("add key");
-        let plaintext = "The true sign of intelligence is not knowledge but imagination.";
-        let public_key =
-            key_store.public_key("did:example:alice#key-id").await.expect("get public key");
+        let entry = Keyring::generate(&Store, "owner", "key-1", Curve::Es256K).await.unwrap();
+        let public_key = entry.public_key().await.expect("should get key");
+        let pk = PublicKey::try_from(public_key).expect("should convert");
 
+        let plaintext = "The true sign of intelligence is not knowledge but imagination.";
         let jwe = JweBuilder::new()
             .content_algorithm(EncAlgorithm::A256Gcm)
             .key_algorithm(AlgAlgorithm::EciesEs256K)
             .payload(&plaintext)
-            .add_recipient("did:example:alice#key-id", public_key)
+            .add_recipient("key-1", pk)
             .build()
             .expect("should encrypt");
 
-        let receiver = KeyringReceiver::new("did:example:alice#key-id", key_store.clone());
-        let decrypted: String = decrypt(&jwe, &receiver).await.expect("should decrypt");
+        let decrypted: String = decrypt(&jwe, &entry).await.expect("should decrypt");
         assert_eq!(plaintext, decrypted);
+    }
+
+    static STORE: LazyLock<DashMap<String, Vec<u8>>> = LazyLock::new(DashMap::new);
+
+    #[derive(Clone, Debug)]
+    struct Store;
+
+    impl Vault for Store {
+        async fn put(&self, owner: &str, partition: &str, key: &str, data: &[u8]) -> Result<()> {
+            let key = format!("{owner}-{partition}-{key}");
+            STORE.insert(key, data.to_vec());
+            Ok(())
+        }
+
+        async fn get(&self, owner: &str, partition: &str, key: &str) -> Result<Option<Vec<u8>>> {
+            let key = format!("{owner}-{partition}-{key}");
+            let Some(bytes) = STORE.get(&key) else {
+                return Ok(None);
+            };
+            Ok(Some(bytes.to_vec()))
+        }
+
+        async fn delete(&self, owner: &str, partition: &str, key: &str) -> Result<()> {
+            let key = format!("{owner}-{partition}-{key}");
+            STORE.remove(&key);
+            Ok(())
+        }
+
+        async fn get_all(&self, owner: &str, partition: &str) -> Result<Vec<(String, Vec<u8>)>> {
+            let all = STORE
+                .iter()
+                .filter(move |r| r.key().starts_with(&format!("{owner}-{partition}-")))
+                .map(|r| (r.key().to_string(), r.value().clone()))
+                .collect::<Vec<_>>();
+            Ok(all)
+        }
     }
 }

@@ -1,11 +1,15 @@
-//! # Types for keys
+//! # Primitive Cryptography Types
 
-use anyhow::anyhow;
+use std::fmt::Display;
+use std::str::FromStr;
+
+use anyhow::{Result, anyhow};
 use base64ct::{Base64UrlUnpadded, Encoding};
+pub use ed25519_dalek::{PUBLIC_KEY_LENGTH, SECRET_KEY_LENGTH};
+use rand::rngs::OsRng;
+use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use zeroize::{Zeroize, ZeroizeOnDrop};
-
-use crate::PUBLIC_KEY_LENGTH;
 
 /// Prefix bytes (tag) to indicate a full public key.
 pub const TAG_PUBKEY_FULL: u8 = 0x04;
@@ -18,6 +22,76 @@ pub const X25519_CODEC: [u8; 2] = [0xec, 0x01];
 
 /// Alias for multi-base encoded string.
 pub type MultiKey = String;
+
+/// Cryptographic key type.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
+pub enum KeyType {
+    /// Octet key pair (Edwards curve)
+    #[default]
+    #[serde(rename = "OKP")]
+    Okp,
+
+    /// Elliptic curve key pair
+    #[serde(rename = "EC")]
+    Ec,
+
+    /// Octet string
+    #[serde(rename = "oct")]
+    Oct,
+}
+
+/// Cryptographic curve type.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
+pub enum Curve {
+    /// Ed25519 signature (DSA) key pairs.
+    #[default]
+    Ed25519,
+
+    /// X25519 function (encryption) key pairs.
+    X25519,
+
+    /// secp256k1 curve.
+    #[serde(rename = "ES256K", alias = "secp256k1")]
+    Es256K,
+
+    /// secp256r1 curve.
+    P256,
+}
+
+impl Curve {
+    /// Generate a new key for the given key type.
+    pub fn generate(&self) -> Vec<u8> {
+        match self {
+            Self::Ed25519 => {
+                let signing_key = ed25519_dalek::SigningKey::generate(&mut OsRng);
+                signing_key.as_bytes().to_vec()
+            }
+            Self::X25519 => {
+                let secret_key = x25519_dalek::StaticSecret::random_from_rng(OsRng);
+                secret_key.to_bytes().to_vec()
+            }
+            Self::Es256K => {
+                let (secret_key, _) = ecies::utils::generate_keypair();
+                secret_key.serialize().to_vec()
+            }
+            Self::P256 => {
+                let secret_key = p256::SecretKey::random(&mut OsRng);
+                secret_key.to_bytes().to_vec()
+            }
+        }
+    }
+}
+
+impl Display for Curve {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Ed25519 => write!(f, "Ed25519"),
+            Self::X25519 => write!(f, "X25519"),
+            Self::Es256K => write!(f, "ES256K"),
+            Self::P256 => write!(f, "P256"),
+        }
+    }
+}
 
 /// A secret key that can be used to compute a single `SharedSecret` or to
 /// sign a payload.
@@ -37,21 +111,13 @@ impl From<[u8; 32]> for SecretKey {
     }
 }
 
-impl TryFrom<&str> for SecretKey {
-    type Error = anyhow::Error;
+impl FromStr for SecretKey {
+    type Err = anyhow::Error;
 
-    fn try_from(val: &str) -> Result<Self, Self::Error> {
-        let decoded = Base64UrlUnpadded::decode_vec(val)?;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let decoded = Base64UrlUnpadded::decode_vec(s)?;
         let bytes: [u8; 32] = decoded.try_into().map_err(|_| anyhow!("invalid key"))?;
         Ok(Self::from(bytes))
-    }
-}
-
-impl TryFrom<&String> for SecretKey {
-    type Error = anyhow::Error;
-
-    fn try_from(val: &String) -> Result<Self, Self::Error> {
-        Self::try_from(val.as_str())
     }
 }
 
@@ -75,7 +141,7 @@ impl SecretKey {
     ///
     /// # Errors
     /// LATER: document errors
-    pub fn shared_secret(self, sender_public: PublicKey) -> anyhow::Result<SharedSecret> {
+    pub fn shared_secret(self, sender_public: PublicKey) -> Result<SharedSecret> {
         // x25519
         if sender_public.y.is_none() {
             let sender_public = x25519_dalek::PublicKey::from(sender_public.to_bytes());
@@ -112,7 +178,6 @@ impl From<SecretKey> for ed25519_dalek::SigningKey {
         Self::from_bytes(&val.0)
     }
 }
-
 
 /// A shared secret key that can be used to encrypt and decrypt messages.
 #[derive(Debug, Zeroize, ZeroizeOnDrop)]
@@ -164,7 +229,7 @@ impl PublicKey {
     ///
     /// # Errors
     /// LATER: document errors
-    pub fn from_slice(val: &[u8]) -> anyhow::Result<Self> {
+    pub fn from_slice(val: &[u8]) -> Result<Self> {
         Self::try_from(val)
     }
 
@@ -214,7 +279,7 @@ impl From<ecies::PublicKey> for PublicKey {
 impl TryFrom<&[u8]> for PublicKey {
     type Error = anyhow::Error;
 
-    fn try_from(val: &[u8]) -> anyhow::Result<Self> {
+    fn try_from(val: &[u8]) -> Result<Self> {
         if val.len() == 32 {
             let mut x = [0; 32];
             x.copy_from_slice(&val[0..32]);
@@ -236,7 +301,7 @@ impl TryFrom<&[u8]> for PublicKey {
 impl TryFrom<Vec<u8>> for PublicKey {
     type Error = anyhow::Error;
 
-    fn try_from(val: Vec<u8>) -> anyhow::Result<Self> {
+    fn try_from(val: Vec<u8>) -> Result<Self> {
         Self::try_from(val.as_slice())
     }
 }
@@ -244,7 +309,7 @@ impl TryFrom<Vec<u8>> for PublicKey {
 impl TryFrom<(&[u8], &[u8])> for PublicKey {
     type Error = anyhow::Error;
 
-    fn try_from(val: (&[u8], &[u8])) -> anyhow::Result<Self> {
+    fn try_from(val: (&[u8], &[u8])) -> Result<Self> {
         if val.0.len() != 32 || val.1.len() != 32 {
             return Err(anyhow!("invalid public key length"));
         }
@@ -284,7 +349,7 @@ impl From<PublicKey> for x25519_dalek::PublicKey {
 impl TryFrom<PublicKey> for ecies::PublicKey {
     type Error = anyhow::Error;
 
-    fn try_from(val: PublicKey) -> anyhow::Result<Self> {
+    fn try_from(val: PublicKey) -> Result<Self> {
         let key: [u8; 65] =
             val.to_vec().try_into().map_err(|_| anyhow!("issue converting public key to array"))?;
         Self::parse(&key).map_err(|e| anyhow!("issue parsing public key: {e}"))
@@ -294,7 +359,7 @@ impl TryFrom<PublicKey> for ecies::PublicKey {
 impl TryFrom<PublicKey> for ecdsa::VerifyingKey<k256::Secp256k1> {
     type Error = anyhow::Error;
 
-    fn try_from(val: PublicKey) -> anyhow::Result<Self> {
+    fn try_from(val: PublicKey) -> Result<Self> {
         let y = val.y.ok_or_else(|| anyhow!("'y' is invalid"))?;
         let mut sec1 = vec![0x04]; // uncompressed format
         sec1.append(&mut val.x.to_vec());
@@ -307,9 +372,8 @@ impl TryFrom<PublicKey> for ecdsa::VerifyingKey<k256::Secp256k1> {
 impl TryFrom<PublicKey> for ed25519_dalek::VerifyingKey {
     type Error = anyhow::Error;
 
-    fn try_from(val: PublicKey) -> anyhow::Result<Self> {
-        Self::from_bytes(&val.x)
-            .map_err(|e| anyhow!("unable to build verifying key: {e}"))
+    fn try_from(val: PublicKey) -> Result<Self> {
+        Self::from_bytes(&val.x).map_err(|e| anyhow!("unable to build verifying key: {e}"))
     }
 }
 
@@ -318,7 +382,7 @@ impl TryFrom<PublicKey> for ed25519_dalek::VerifyingKey {
 /// # Errors
 /// If the provided input is the wrong length or cannot be converted to an
 /// Ed25519 verifying key an error will be returned.
-pub fn derive_x25519_public(ed25519_pubkey: &PublicKey) -> anyhow::Result<PublicKey> {
+pub fn derive_x25519_public(ed25519_pubkey: &PublicKey) -> Result<PublicKey> {
     let verifier_bytes: [u8; PUBLIC_KEY_LENGTH] = ed25519_pubkey.x;
     let verifier = ed25519_dalek::VerifyingKey::from_bytes(&verifier_bytes)?;
     let x25519_bytes = verifier.to_montgomery().to_bytes();
@@ -333,7 +397,7 @@ pub fn derive_x25519_public(ed25519_pubkey: &PublicKey) -> anyhow::Result<Public
 /// Ed25519 signing key an error will be returned.
 pub fn derive_x25519_secret(
     secret: &[u8; PUBLIC_KEY_LENGTH], ed25519_pubkey: &PublicKey,
-) -> anyhow::Result<SharedSecret> {
+) -> Result<SharedSecret> {
     // EdDSA signing key
     let signing_key = ed25519_dalek::SigningKey::from_bytes(secret);
 
