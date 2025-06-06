@@ -14,7 +14,7 @@ use crate::{
 /// Keyring trait for managing signing and encryption keys.
 pub trait Keyring: Send + Sync {
     /// The type used for key entries managed by the keyring.
-    type Entry: Signer + Receiver;
+    type Entry: Signer + Receiver + NextKey;
 
     /// Generate a key entry and add to the key ring.
     ///
@@ -27,12 +27,21 @@ pub trait Keyring: Send + Sync {
     /// Get the specified key entry.
     fn entry(&self, owner: &str, key_id: &str) -> impl Future<Output = Result<Self::Entry>> + Send;
 
-    /// Rotates the specified key.
+    /// Rotate the specified key.
     ///
     /// This will result in the active key being archived, the next key being
     /// actived, and a new `next_key` being generated.
     fn rotate(&self, owner: &str, key_id: &str)
     -> impl Future<Output = Result<Self::Entry>> + Send;
+
+    /// List the key ids for all keyring entries.
+    fn key_ids(&self, owner: &str) -> impl Future<Output = Result<Vec<String>>> + Send;
+}
+
+/// Keyring entries are required to return the public key of their next key pair.
+pub trait NextKey: Send + Sync {
+    /// Returns the next public key.
+    fn next_key(&self) -> impl Future<Output = Result<Vec<u8>>> + Send;
 }
 
 /// Key entry for signing and encryption operations.
@@ -44,6 +53,21 @@ pub struct Entry {
     curve: Curve,
     secret_key: Vec<u8>,
     next_secret_key: Vec<u8>,
+}
+
+impl Entry {
+    /// Restore a previously CBOR-serialized `Entry`.
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
+        ciborium::from_reader(bytes).map_err(Into::into)
+    }
+
+    /// Serialize the entry to CBOR.
+    pub fn to_bytes(&self) -> Result<Vec<u8>> {
+        let mut data = Vec::new();
+        ciborium::into_writer(self, &mut data)
+            .map_err(|e| anyhow!("issue serializing entry: {e}"))?;
+        Ok(data)
+    }
 }
 
 impl Signer for Entry {
@@ -143,6 +167,52 @@ impl Receiver for Entry {
     }
 }
 
+impl NextKey for Entry {
+    /// Returns the next verifying/public key.
+    async fn next_key(&self) -> Result<Vec<u8>> {
+        // self.to_public(&self.next_secret_key).await
+        let secret_key = self.next_secret_key.clone();
+        let bytes: [u8; SECRET_KEY_LENGTH] =
+            secret_key.try_into().map_err(|_| anyhow!("cannot convert stored vec to slice"))?;
+
+        match self.curve {
+            Curve::Ed25519 => {
+                let signing_key = ed25519_dalek::SigningKey::from(&bytes);
+                let public_key = signing_key.verifying_key();
+                Ok(public_key.to_bytes().to_vec())
+            }
+            Curve::X25519 => {
+                let secret_key = x25519_dalek::StaticSecret::from(bytes);
+                let public_key = x25519_dalek::PublicKey::from(&secret_key);
+                Ok(public_key.to_bytes().to_vec())
+            }
+            Curve::Es256K => {
+                let secret_key = ecies::SecretKey::parse(&bytes)
+                    .map_err(|_| anyhow!("issue deserializing secret key"))?;
+                let public_key = ecies::PublicKey::from_secret_key(&secret_key);
+                Ok(public_key.serialize().to_vec())
+            }
+            Curve::P256 => unimplemented!("P256 not implemented yet"),
+        }
+    }
+}
+
+impl TryFrom<Vec<u8>> for Entry {
+    type Error = anyhow::Error;
+
+    fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
+        Entry::from_bytes(&value)
+    }
+}
+
+impl TryFrom<Entry> for Vec<u8> {
+    type Error = anyhow::Error;
+
+    fn try_from(entry: Entry) -> Result<Self, Self::Error> {
+        entry.to_bytes()
+    }
+}
+
 impl<T: Vault> Keyring for T {
     type Entry = Entry;
 
@@ -153,10 +223,7 @@ impl<T: Vault> Keyring for T {
             secret_key: curve.generate(),
             next_secret_key: curve.generate(),
         };
-
-        let mut data = Vec::new();
-        ciborium::into_writer(&entry, &mut data).unwrap();
-        Vault::put(self, owner, "VAULT", key_id, &data).await?;
+        Vault::put(self, owner, "VAULT", key_id, &entry.to_bytes()?).await?;
 
         Ok(entry)
     }
@@ -165,7 +232,7 @@ impl<T: Vault> Keyring for T {
         let Some(data) = Vault::get(self, owner, "VAULT", key_id).await? else {
             return Err(anyhow!("could not find issuer metadata"));
         };
-        ciborium::from_reader(data.as_slice()).map_err(Into::into)
+        Entry::from_bytes(&data)
     }
 
     async fn rotate(&self, owner: &str, key_id: &str) -> Result<Self::Entry> {
@@ -179,9 +246,21 @@ impl<T: Vault> Keyring for T {
         };
 
         let mut data = Vec::new();
-        ciborium::into_writer(&entry, &mut data).unwrap();
+        ciborium::into_writer(&new_entry, &mut data).unwrap();
         Vault::put(self, owner, "VAULT", key_id, &data).await?;
 
         Ok(new_entry)
+    }
+
+    async fn key_ids(&self, owner: &str) -> Result<Vec<String>> {
+        let items = Vault::get_all(self, owner, "VAULT").await?;
+
+        let mut entries = vec![];
+        for (_, bytes) in items {
+            let entry = Entry::from_bytes(&bytes)?;
+            entries.push(entry.key_id.clone());
+        }
+
+        Ok(entries)
     }
 }
