@@ -57,11 +57,17 @@ pub struct Entry {
 
 impl Entry {
     /// Restore a previously CBOR-serialized `Entry`.
+    ///
+    /// # Errors
+    /// Returns an error if the bytes cannot be deserialized into an `Entry`.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
         ciborium::from_reader(bytes).map_err(Into::into)
     }
 
     /// Serialize the entry to CBOR.
+    ///
+    /// # Errors
+    /// Returns an error if the entry cannot be serialized to bytes.
     pub fn to_bytes(&self) -> Result<Vec<u8>> {
         let mut data = Vec::new();
         ciborium::into_writer(self, &mut data)
@@ -201,7 +207,7 @@ impl TryFrom<Vec<u8>> for Entry {
     type Error = anyhow::Error;
 
     fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
-        Entry::from_bytes(&value)
+        Self::from_bytes(&value)
     }
 }
 
