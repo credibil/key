@@ -404,7 +404,7 @@ impl<P, S, K> JwsBuilder<P, S, K> {
     /// At this point, the builder simply captures the signer for use in the final
     /// build step. Can only be done if the content hasn't been signed yet.
     #[must_use]
-    pub fn add_signer(self, signer: &impl Signer) -> JwsBuilder<P, Signers<impl Signer>, K> {
+    pub fn add_signer(self, signer: &impl Signer) -> JwsBuilder<P, Signers<'_, impl Signer>, K> {
         JwsBuilder {
             typ: self.typ,
             payload: self.payload,
