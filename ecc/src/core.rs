@@ -8,10 +8,7 @@ use base64ct::{Base64UrlUnpadded, Encoding};
 pub use ed25519_dalek::{PUBLIC_KEY_LENGTH, SECRET_KEY_LENGTH};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use sha2::Digest;
 use zeroize::{Zeroize, ZeroizeOnDrop};
-
-// use crate::sign::Algorithm;
 
 /// Prefix bytes (tag) to indicate a full public key.
 pub const TAG_PUBKEY_FULL: u8 = 0x04;

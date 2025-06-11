@@ -159,15 +159,15 @@ impl NextKey for Entry {
     async fn next_key(&self) -> Result<PublicKey> {
         match self.curve {
             Curve::Ed25519 => {
-                let signing_key = ed25519_dalek::SigningKey::try_from(&self.secret_key)?;
+                let signing_key = ed25519_dalek::SigningKey::try_from(&self.next_secret_key)?;
                 Ok(signing_key.verifying_key().into())
             }
             Curve::X25519 => {
-                let secret_key = x25519_dalek::StaticSecret::try_from(&self.secret_key)?;
+                let secret_key = x25519_dalek::StaticSecret::try_from(&self.next_secret_key)?;
                 Ok(x25519_dalek::PublicKey::from(&secret_key).into())
             }
             Curve::Es256K => {
-                let secret_key = ecies::SecretKey::try_from(&self.secret_key)?;
+                let secret_key = ecies::SecretKey::try_from(&self.next_secret_key)?;
                 Ok(ecies::PublicKey::from_secret_key(&secret_key).into())
             }
             Curve::P256 => unimplemented!("P256 not implemented yet"),
@@ -219,14 +219,15 @@ impl<T: Vault> Keyring for T {
         let owner = entry.owner.clone();
 
         let new_entry = Entry {
-            owner: owner.clone(),
-            key_id: key_id.clone(),
+            owner,
+            key_id,
             curve: entry.curve.clone(),
             secret_key: entry.next_secret_key.clone(),
             next_secret_key: entry.curve.generate().try_into()?,
         };
 
-        Vault::put(self, &owner, "VAULT", &key_id, &new_entry.to_bytes()?).await?;
+        Vault::put(self, &new_entry.owner, "VAULT", &new_entry.key_id, &new_entry.to_bytes()?)
+            .await?;
 
         Ok(new_entry)
     }
