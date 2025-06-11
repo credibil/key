@@ -271,6 +271,18 @@ impl PublicKey {
     pub const fn empty() -> Self {
         Self { x: [0; 32], y: None }
     }
+
+    /// Derive an `X25519` public key from an `Ed25519` public
+    ///
+    /// # Errors
+    ///
+    /// If the provided input is the wrong length or cannot be converted to an
+    /// Ed25519 verifying key an error will be returned.
+    pub fn derive_x25519(&self) -> Result<Self> {
+        let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(&self.x)?;
+        let x25519_bytes = verifying_key.to_montgomery().to_bytes();
+        Self::from_slice(&x25519_bytes)
+    }
 }
 
 impl From<[u8; 32]> for PublicKey {
@@ -418,46 +430,34 @@ impl TryFrom<PublicKey> for ed25519_dalek::VerifyingKey {
     }
 }
 
-/// Derive an `X25519` public key from an `Ed25519` public key.
-///
-/// # Errors
-/// If the provided input is the wrong length or cannot be converted to an
-/// Ed25519 verifying key an error will be returned.
-pub fn x_derive_x25519_public(ed25519_pubkey: &PublicKey) -> Result<PublicKey> {
-    let verifier_bytes: [u8; 32] = ed25519_pubkey.x;
-    let verifier = ed25519_dalek::VerifyingKey::from_bytes(&verifier_bytes)?;
-    let x25519_bytes = verifier.to_montgomery().to_bytes();
-    PublicKey::from_slice(&x25519_bytes)
-}
+// /// Derive an `X25519` shared secret from a static secret and an `Ed25519`
+// /// public key.
+// ///
+// /// # Errors
+// /// If the provided input is the wrong length or cannot be inferred as an
+// /// Ed25519 signing key an error will be returned.
+// pub fn x_derive_x25519_secret(
+//     secret: &[u8; SECRET_KEY_LENGTH], ed25519_pubkey: &PublicKey,
+// ) -> Result<SharedSecret> {
+//     // EdDSA signing key
+//     let signing_key = ed25519_dalek::SigningKey::from_bytes(secret);
 
-/// Derive an `X25519` shared secret from a static secret and an `Ed25519`
-/// public key.
-///
-/// # Errors
-/// If the provided input is the wrong length or cannot be inferred as an
-/// Ed25519 signing key an error will be returned.
-pub fn x_derive_x25519_secret(
-    secret: &[u8; SECRET_KEY_LENGTH], ed25519_pubkey: &PublicKey,
-) -> Result<SharedSecret> {
-    // EdDSA signing key
-    let signing_key = ed25519_dalek::SigningKey::from_bytes(secret);
+//     // derive X25519 secret for Diffie-Hellman from Ed25519 secret
+//     let hash = sha2::Sha512::digest(signing_key.as_bytes());
+//     let mut hashed = [0u8; PUBLIC_KEY_LENGTH];
+//     hashed.copy_from_slice(&hash[..PUBLIC_KEY_LENGTH]);
+//     let secret_key = x25519_dalek::StaticSecret::from(hashed);
 
-    // derive X25519 secret for Diffie-Hellman from Ed25519 secret
-    let hash = sha2::Sha512::digest(signing_key.as_bytes());
-    let mut hashed = [0u8; PUBLIC_KEY_LENGTH];
-    hashed.copy_from_slice(&hash[..PUBLIC_KEY_LENGTH]);
-    let secret_key = x25519_dalek::StaticSecret::from(hashed);
+//     let secret_key = SecretKey::from(secret_key.to_bytes());
+//     secret_key.shared_secret(*ed25519_pubkey)
+// }
 
-    let secret_key = SecretKey::from(secret_key.to_bytes());
-    secret_key.shared_secret(*ed25519_pubkey)
-}
-
-/// Derive an `X25519` public key from a static secret that is covertable to an
-/// `Ed25519` signing key.
-#[must_use]
-pub fn x_derive_x25519_public_from_secret(secret: &[u8; SECRET_KEY_LENGTH]) -> PublicKey {
-    let signing_key = ed25519_dalek::SigningKey::from_bytes(secret);
-    let derived_public =
-        x25519_dalek::PublicKey::from(signing_key.verifying_key().to_montgomery().to_bytes());
-    PublicKey::from(derived_public)
-}
+// /// Derive an `X25519` public key from a static secret that is covertable to an
+// /// `Ed25519` signing key.
+// #[must_use]
+// pub fn x_derive_x25519_public_from_secret(secret: &[u8; SECRET_KEY_LENGTH]) -> PublicKey {
+//     let signing_key = ed25519_dalek::SigningKey::from_bytes(secret);
+//     let derived_public =
+//         x25519_dalek::PublicKey::from(signing_key.verifying_key().to_montgomery().to_bytes());
+//     PublicKey::from(derived_public)
+// }
