@@ -1,15 +1,15 @@
 //! Key management
 
 use anyhow::{Result, anyhow, bail};
+use ed25519_dalek::PUBLIC_KEY_LENGTH;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha512};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
+use crate::core::{Curve, PublicKey, SecretKey, SharedSecret};
+use crate::encrypt::Receiver;
+use crate::sign::{Algorithm, Signer};
 use crate::vault::Vault;
-use crate::{
-    Algorithm, Curve, PUBLIC_KEY_LENGTH, PublicKey, Receiver, SECRET_KEY_LENGTH, SecretKey,
-    SharedSecret, Signer,
-};
 
 /// Keyring trait for managing signing and encryption keys.
 pub trait Keyring: Send + Sync {
@@ -40,11 +40,11 @@ pub trait Keyring: Send + Sync {
 /// Keyring entries are required to return the public key of their next key pair.
 pub trait NextKey: Send + Sync {
     /// Returns the next public key.
-    fn next_key(&self) -> impl Future<Output = Result<Vec<u8>>> + Send;
+    fn next_key(&self) -> impl Future<Output = Result<PublicKey>> + Send;
 }
 
 /// Key entry for signing and encryption operations.
-#[derive(Debug, Clone, Deserialize, Serialize, Zeroize, ZeroizeOnDrop)]
+#[derive(Clone, Debug, Deserialize, Serialize, Zeroize, ZeroizeOnDrop)]
 pub struct Entry {
     #[zeroize(skip)]
     owner: String,
@@ -52,8 +52,8 @@ pub struct Entry {
     key_id: String,
     #[zeroize(skip)]
     curve: Curve,
-    secret_key: Vec<u8>,
-    next_secret_key: Vec<u8>,
+    secret_key: SecretKey,
+    next_secret_key: SecretKey,
 }
 
 impl Entry {
@@ -79,34 +79,23 @@ impl Entry {
 
 impl Signer for Entry {
     async fn try_sign(&self, msg: &[u8]) -> Result<Vec<u8>> {
-        let sk = self.secret_key.clone();
-        let bytes: [u8; SECRET_KEY_LENGTH] =
-            sk.try_into().map_err(|_| anyhow!("issue converting secret key"))?;
-        let secret_key = SecretKey::from(bytes);
-
         match self.curve {
-            Curve::Ed25519 => Algorithm::EdDSA.try_sign(msg, secret_key),
-            Curve::Es256K => Algorithm::Es256K.try_sign(msg, secret_key),
+            Curve::Ed25519 => Algorithm::EdDSA.try_sign(msg, &self.secret_key),
+            Curve::Es256K => Algorithm::Es256K.try_sign(msg, &self.secret_key),
             Curve::P256 => unimplemented!("P256 not yet implemented"),
             Curve::X25519 => bail!("X25519 cannot be used for signing"),
         }
     }
 
-    async fn verifying_key(&self) -> Result<Vec<u8>> {
-        let sk = self.secret_key.clone();
-        let bytes: [u8; SECRET_KEY_LENGTH] =
-            sk.try_into().map_err(|_| anyhow!("cannot convert stored vec to slice"))?;
-
+    async fn verifying_key(&self) -> Result<PublicKey> {
         match self.curve {
             Curve::Ed25519 => {
-                let signing_key = ed25519_dalek::SigningKey::from(&bytes);
-                Ok(signing_key.verifying_key().to_bytes().to_vec())
+                let signing_key = ed25519_dalek::SigningKey::try_from(&self.secret_key)?;
+                Ok(signing_key.verifying_key().into())
             }
             Curve::Es256K => {
-                let secret_key = ecies::SecretKey::parse(&bytes)
-                    .map_err(|_| anyhow!("cannot deserialize secret key"))?;
-                let public_key = ecies::PublicKey::from_secret_key(&secret_key);
-                Ok(public_key.serialize().to_vec())
+                let secret_key = ecies::SecretKey::try_from(&self.secret_key)?;
+                Ok(ecies::PublicKey::from_secret_key(&secret_key).into())
             }
             Curve::P256 => unimplemented!("P256 not implemented yet"),
             Curve::X25519 => bail!("X25519 cannot be used for signing"),
@@ -127,77 +116,59 @@ impl Receiver for Entry {
         Ok(self.key_id.clone())
     }
 
-    async fn public_key(&self) -> Result<Vec<u8>> {
-        let sk = self.secret_key.clone();
-        let bytes: [u8; SECRET_KEY_LENGTH] =
-            sk.try_into().map_err(|_| anyhow!("cannot convert stored vec to slice"))?;
-
+    async fn public_key(&self) -> Result<PublicKey> {
         match self.curve {
             Curve::Ed25519 => {
-                let signing_key = ed25519_dalek::SigningKey::from(&bytes);
+                let signing_key = ed25519_dalek::SigningKey::try_from(&self.secret_key)?;
                 let verifying_key = signing_key.verifying_key();
                 let public_key =
                     x25519_dalek::PublicKey::from(verifying_key.to_montgomery().to_bytes());
-                Ok(public_key.to_bytes().to_vec())
+                Ok(public_key.into())
             }
             Curve::X25519 => {
-                let secret_key = x25519_dalek::StaticSecret::from(bytes);
-                let public_key = x25519_dalek::PublicKey::from(&secret_key);
-                Ok(public_key.to_bytes().to_vec())
+                let secret_key = x25519_dalek::StaticSecret::try_from(&self.secret_key)?;
+                Ok(x25519_dalek::PublicKey::from(&secret_key).into())
             }
             Curve::Es256K => {
-                let secret_key = ecies::SecretKey::parse(&bytes)
-                    .map_err(|_| anyhow!("cannot deserialize secret key"))?;
-                let public_key = ecies::PublicKey::from_secret_key(&secret_key);
-                Ok(public_key.serialize().to_vec())
+                let secret_key = ecies::SecretKey::try_from(&self.secret_key)?;
+                Ok(ecies::PublicKey::from_secret_key(&secret_key).into())
             }
             Curve::P256 => unimplemented!("P256 not implemented yet"),
         }
     }
 
     async fn shared_secret(&self, sender_public: PublicKey) -> Result<SharedSecret> {
-        let sk = self.secret_key.clone();
-        let mut bytes: [u8; SECRET_KEY_LENGTH] =
-            sk.try_into().map_err(|_| anyhow!("issue converting secret key"))?;
-
-        // convert Ed25519 secret key to X25519.
-        if matches!(self.curve, Curve::Ed25519) {
-            let signing_key = ed25519_dalek::SigningKey::from(&bytes);
+        let secret_key = if self.curve == Curve::Ed25519 {
+            // convert Ed25519 secret key to X25519.
+            let signing_key = ed25519_dalek::SigningKey::try_from(&self.secret_key)?;
             let hash = Sha512::digest(signing_key.as_bytes());
             let mut hashed = [0u8; PUBLIC_KEY_LENGTH];
             hashed.copy_from_slice(&hash[0..PUBLIC_KEY_LENGTH]);
-            bytes = x25519_dalek::StaticSecret::from(hashed).to_bytes();
-        }
+            let bytes = x25519_dalek::StaticSecret::from(hashed).to_bytes();
+            &SecretKey::from(bytes)
+        } else {
+            &self.secret_key
+        };
 
-        let secret_key = SecretKey::from(bytes);
         secret_key.shared_secret(sender_public)
     }
 }
 
 impl NextKey for Entry {
     /// Returns the next verifying/public key.
-    async fn next_key(&self) -> Result<Vec<u8>> {
-        // self.to_public(&self.next_secret_key).await
-        let secret_key = self.next_secret_key.clone();
-        let bytes: [u8; SECRET_KEY_LENGTH] =
-            secret_key.try_into().map_err(|_| anyhow!("cannot convert stored vec to slice"))?;
-
+    async fn next_key(&self) -> Result<PublicKey> {
         match self.curve {
             Curve::Ed25519 => {
-                let signing_key = ed25519_dalek::SigningKey::from(&bytes);
-                let public_key = signing_key.verifying_key();
-                Ok(public_key.to_bytes().to_vec())
+                let signing_key = ed25519_dalek::SigningKey::try_from(&self.secret_key)?;
+                Ok(signing_key.verifying_key().into())
             }
             Curve::X25519 => {
-                let secret_key = x25519_dalek::StaticSecret::from(bytes);
-                let public_key = x25519_dalek::PublicKey::from(&secret_key);
-                Ok(public_key.to_bytes().to_vec())
+                let secret_key = x25519_dalek::StaticSecret::try_from(&self.secret_key)?;
+                Ok(x25519_dalek::PublicKey::from(&secret_key).into())
             }
             Curve::Es256K => {
-                let secret_key = ecies::SecretKey::parse(&bytes)
-                    .map_err(|_| anyhow!("issue deserializing secret key"))?;
-                let public_key = ecies::PublicKey::from_secret_key(&secret_key);
-                Ok(public_key.serialize().to_vec())
+                let secret_key = ecies::SecretKey::try_from(&self.secret_key)?;
+                Ok(ecies::PublicKey::from_secret_key(&secret_key).into())
             }
             Curve::P256 => unimplemented!("P256 not implemented yet"),
         }
@@ -228,8 +199,8 @@ impl<T: Vault> Keyring for T {
             owner: owner.to_string(),
             key_id: key_id.to_string(),
             curve: curve.clone(),
-            secret_key: curve.generate(),
-            next_secret_key: curve.generate(),
+            secret_key: curve.generate().try_into()?,
+            next_secret_key: curve.generate().try_into()?,
         };
         Vault::put(self, owner, "VAULT", key_id, &entry.to_bytes()?).await?;
 
@@ -252,7 +223,7 @@ impl<T: Vault> Keyring for T {
             key_id: key_id.clone(),
             curve: entry.curve.clone(),
             secret_key: entry.next_secret_key.clone(),
-            next_secret_key: entry.curve.generate(),
+            next_secret_key: entry.curve.generate().try_into()?,
         };
 
         Vault::put(self, &owner, "VAULT", &key_id, &new_entry.to_bytes()?).await?;

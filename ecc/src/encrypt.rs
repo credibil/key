@@ -22,7 +22,7 @@ pub trait Receiver: Send + Sync {
     fn key_id(&self) -> impl Future<Output = Result<String>> + Send;
 
     /// The Receiver's public key used to derive the shared secret.
-    fn public_key(&self) -> impl Future<Output = Result<Vec<u8>>> + Send;
+    fn public_key(&self) -> impl Future<Output = Result<PublicKey>> + Send;
 
     /// Derive the receiver's shared secret used for decrypting (or direct use)
     /// for the Content Encryption Key.

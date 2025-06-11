@@ -27,13 +27,12 @@
 
 use anyhow::{Result, anyhow};
 use base64ct::{Base64UrlUnpadded, Encoding};
-use credibil_ecc::{AlgAlgorithm, Curve, ED25519_CODEC, KeyType, X25519_CODEC};
+use credibil_ecc::{Curve, ED25519_CODEC, KeyType, X25519_CODEC};
 use multibase::Base;
 use serde::{Deserialize, Serialize};
 
 /// Simplified JSON Web Key (JWK) key structure.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
-#[allow(clippy::module_name_repetitions)]
 pub struct PublicKeyJwk {
     /// Key identifier.
     /// For example, "_Qq0UL2Fq651Q0Fjd6TvnYE-faHiOpRlPVQcY_-tA4A".
@@ -53,10 +52,10 @@ pub struct PublicKeyJwk {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub y: Option<String>,
 
-    /// Algorithm intended for use with the key.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub alg: Option<AlgAlgorithm>,
-
+    // /// Algorithm intended for use with the key.
+    // #[serde(skip_serializing_if = "Option::is_none")]
+    // pub alg: Option<AlgAlgorithm>,
+    //
     /// Use of the key.
     #[serde(rename = "use")]
     #[serde(skip_serializing_if = "Option::is_none")]

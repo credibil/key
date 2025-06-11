@@ -2,6 +2,7 @@
 
 use std::fmt::Display;
 
+use anyhow::Result;
 use ecdsa::signature::{Signer as _, Verifier as _};
 use serde::{Deserialize, Serialize};
 
@@ -33,7 +34,7 @@ impl Algorithm {
     /// # Errors
     /// Will return an error if the signing key is not the correct format for
     /// the type of algorithm or if the underlying signing operation fails.
-    pub fn try_sign(&self, msg: &[u8], signing_key: SecretKey) -> anyhow::Result<Vec<u8>> {
+    pub fn try_sign(&self, msg: &[u8], signing_key: &SecretKey) -> Result<Vec<u8>> {
         match self {
             Self::Es256K => {
                 let sk: ecdsa::SigningKey<k256::Secp256k1> = signing_key.try_into()?;
@@ -41,7 +42,7 @@ impl Algorithm {
                 Ok(signature.to_vec())
             }
             Self::EdDSA => {
-                let sk: ed25519_dalek::SigningKey = signing_key.into();
+                let sk: ed25519_dalek::SigningKey = signing_key.try_into()?;
                 let signature = sk.sign(msg);
                 Ok(signature.to_vec())
             }
@@ -53,7 +54,7 @@ impl Algorithm {
     /// # Errors
     /// Will return an error if the signature is invalid or the verifying key is
     /// not correct for the type of algorithm.
-    pub fn verify(&self, msg: &[u8], sig: &[u8], verifying_key: &PublicKey) -> anyhow::Result<()> {
+    pub fn verify(&self, msg: &[u8], sig: &[u8], verifying_key: &PublicKey) -> Result<()> {
         match self {
             Self::Es256K => {
                 let vk: ecdsa::VerifyingKey<k256::Secp256k1> = (*verifying_key).try_into()?;
@@ -85,14 +86,14 @@ pub trait Signer: Send + Sync {
     }
 
     /// `TrySign` is the fallible version of Sign.
-    fn try_sign(&self, msg: &[u8]) -> impl Future<Output = anyhow::Result<Vec<u8>>> + Send;
+    fn try_sign(&self, msg: &[u8]) -> impl Future<Output = Result<Vec<u8>>> + Send;
 
     /// The verifying key (public key) from the signing keypair.
     ///
     /// The possibility of key rotation mean this key should only be referenced
     /// at the point of verifying a signature.
-    fn verifying_key(&self) -> impl Future<Output = anyhow::Result<Vec<u8>>> + Send;
+    fn verifying_key(&self) -> impl Future<Output = Result<PublicKey>> + Send;
 
     /// Signature algorithm used by the signer.
-    fn algorithm(&self) -> impl Future<Output = anyhow::Result<Algorithm>> + Send;
+    fn algorithm(&self) -> impl Future<Output = Result<Algorithm>> + Send;
 }
