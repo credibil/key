@@ -8,6 +8,7 @@ use base64ct::{Base64UrlUnpadded, Encoding};
 pub use ed25519_dalek::{PUBLIC_KEY_LENGTH, SECRET_KEY_LENGTH};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha512};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Prefix bytes (tag) to indicate a full public key.
@@ -427,34 +428,34 @@ impl TryFrom<PublicKey> for ed25519_dalek::VerifyingKey {
     }
 }
 
-// /// Derive an `X25519` shared secret from a static secret and an `Ed25519`
-// /// public key.
-// ///
-// /// # Errors
-// /// If the provided input is the wrong length or cannot be inferred as an
-// /// Ed25519 signing key an error will be returned.
-// pub fn x_derive_x25519_secret(
-//     secret: &[u8; SECRET_KEY_LENGTH], ed25519_pubkey: &PublicKey,
-// ) -> Result<SharedSecret> {
-//     // EdDSA signing key
-//     let signing_key = ed25519_dalek::SigningKey::from_bytes(secret);
+/// Derive an `X25519` shared secret from a static secret and an `Ed25519`
+/// public key.
+///
+/// # Errors
+/// If the provided input is the wrong length or cannot be inferred as an
+/// Ed25519 signing key an error will be returned.
+pub fn derive_x25519_secret(
+    secret: &[u8; SECRET_KEY_LENGTH], ed25519_pubkey: &PublicKey,
+) -> Result<SharedSecret> {
+    // EdDSA signing key
+    let signing_key = ed25519_dalek::SigningKey::from_bytes(secret);
 
-//     // derive X25519 secret for Diffie-Hellman from Ed25519 secret
-//     let hash = sha2::Sha512::digest(signing_key.as_bytes());
-//     let mut hashed = [0u8; PUBLIC_KEY_LENGTH];
-//     hashed.copy_from_slice(&hash[..PUBLIC_KEY_LENGTH]);
-//     let secret_key = x25519_dalek::StaticSecret::from(hashed);
+    // derive X25519 secret for Diffie-Hellman from Ed25519 secret
+    let hash = Sha512::digest(signing_key.as_bytes());
+    let mut hashed = [0u8; PUBLIC_KEY_LENGTH];
+    hashed.copy_from_slice(&hash[..PUBLIC_KEY_LENGTH]);
+    let secret_key = x25519_dalek::StaticSecret::from(hashed);
 
-//     let secret_key = SecretKey::from(secret_key.to_bytes());
-//     secret_key.shared_secret(*ed25519_pubkey)
-// }
+    let secret_key = SecretKey::from(secret_key.to_bytes());
+    secret_key.shared_secret(*ed25519_pubkey)
+}
 
-// /// Derive an `X25519` public key from a static secret that is covertable to an
-// /// `Ed25519` signing key.
-// #[must_use]
-// pub fn x_derive_x25519_public_from_secret(secret: &[u8; SECRET_KEY_LENGTH]) -> PublicKey {
-//     let signing_key = ed25519_dalek::SigningKey::from_bytes(secret);
-//     let derived_public =
-//         x25519_dalek::PublicKey::from(signing_key.verifying_key().to_montgomery().to_bytes());
-//     PublicKey::from(derived_public)
-// }
+/// Derive an `X25519` public key from a static secret that is covertable to an
+/// `Ed25519` signing key.
+#[must_use]
+pub fn derive_x25519_public_from_secret(secret: &[u8; SECRET_KEY_LENGTH]) -> PublicKey {
+    let signing_key = ed25519_dalek::SigningKey::from_bytes(secret);
+    let derived_public =
+        x25519_dalek::PublicKey::from(signing_key.verifying_key().to_montgomery().to_bytes());
+    PublicKey::from(derived_public)
+}
