@@ -27,7 +27,7 @@ pub use crate::jwt::Jwt;
 /// # Errors
 /// TODO: document errors
 pub async fn encode_jws<T>(
-    payload: &T, verification_method: &KeyBinding, signer: &impl Signer,
+    payload: &T, key_binding: &KeyBinding, signer: &impl Signer,
 ) -> Result<String>
 where
     T: Serialize + Send + Sync,
@@ -37,7 +37,7 @@ where
     let jws = JwsBuilder::new()
         .payload(payload)
         .add_signer(signer)
-        .key_ref(verification_method)
+        .key_binding(key_binding)
         .build()
         .await?;
     let Some(signature) = jws.signatures.first() else {
@@ -417,7 +417,7 @@ impl<P, S, K> JwsBuilder<P, S, K> {
 impl<P, S> JwsBuilder<P, S, NoKey> {
     /// Specify the method to use to resolve a verification key.
     #[must_use]
-    pub fn key_ref(self, key: &KeyBinding) -> JwsBuilder<P, S, WithKey> {
+    pub fn key_binding(self, key: &KeyBinding) -> JwsBuilder<P, S, WithKey> {
         JwsBuilder {
             typ: self.typ,
             payload: self.payload,
