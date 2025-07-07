@@ -40,7 +40,3 @@ zeroize = "1.8.1"
 
 # [patch."https://github.com/credibil/core"]
 # credibil-core = { path = "../core" }
-
-# [patch."https://github.com/credibil/key"]
-# credibil-ecc = { path = "../key/ecc" }
-# credibil-jose = { path = "../key/jose" }
