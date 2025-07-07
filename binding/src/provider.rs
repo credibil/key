@@ -1,7 +1,6 @@
 //! # `Binding`
 
-use anyhow::{Result, anyhow};
-use credibil_core::datastore::Datastore;
+use anyhow::Result;
 use credibil_did::Document;
 use credibil_ecc::{Entry, Signer};
 use credibil_jose::{KeyBinding, PublicKeyJwk};
@@ -110,35 +109,4 @@ pub trait Binding: Send + Sync {
 
     /// Fetches all matching items from the underlying store.
     fn get_all(&self, owner: &str) -> impl Future<Output = Result<Vec<(String, Document)>>> + Send;
-}
-
-const BINDING: &str = "binding";
-
-impl<T: Datastore> Binding for T {
-    async fn put(&self, owner: &str, document: &Document) -> Result<()> {
-        let data = serde_json::to_vec(document)?;
-        Datastore::put(self, owner, BINDING, &document.id, &data).await
-    }
-
-    async fn get(&self, owner: &str, did: &str) -> Result<Option<Document>> {
-        let Some(data) = Datastore::get(self, owner, BINDING, did).await? else {
-            return Err(anyhow!("could not find client"));
-        };
-        Ok(serde_json::from_slice(&data)?)
-    }
-
-    async fn delete(&self, owner: &str, did: &str) -> Result<()> {
-        Datastore::delete(self, owner, BINDING, did).await
-    }
-
-    async fn get_all(&self, owner: &str) -> Result<Vec<(String, Document)>> {
-        Datastore::get_all(self, owner, BINDING)
-            .await?
-            .iter()
-            .map(|(key, data)| {
-                let document: Document = serde_json::from_slice(data)?;
-                Ok((key.to_string(), document))
-            })
-            .collect::<Result<Vec<_>>>()
-    }
 }

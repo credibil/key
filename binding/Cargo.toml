@@ -26,4 +26,3 @@ credibil-ecc.workspace = true
 credibil-jose.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tracing.workspace = true

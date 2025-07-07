@@ -338,7 +338,6 @@ dependencies = [
  "credibil-jose",
  "serde",
  "serde_json",
- "tracing",
 ]
 
 [[package]]
@@ -1712,10 +1711,9 @@ dependencies = [
 
 [[package]]
 name = "test-utils"
-version = "0.1.2"
+version = "0.0.0"
 dependencies = [
  "anyhow",
- "credibil-core",
  "credibil-ecc",
  "dashmap",
 ]
