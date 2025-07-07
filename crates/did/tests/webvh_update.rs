@@ -1,0 +1,119 @@
+//! Tests for the update of an existing `did:webvh` document and associated log
+//! entry.
+
+use credibil_did::webvh::{CreateBuilder, UpdateBuilder, Witness, WitnessWeight};
+use credibil_did::{DocumentBuilder, KeyId, Service, VerificationMethod};
+use credibil_ecc::{Curve, Keyring, NextKey, Signer};
+use credibil_jose::PublicKeyJwk;
+use test_utils::Vault;
+
+// Test the happy path of creating then updating a `did:webvh` document and log
+// entries. Should just work without errors.
+#[tokio::test]
+async fn update_ok() {
+    let signer =
+        Keyring::generate(&Vault, "wu", "signing", Curve::Ed25519).await.expect("should generate");
+    let verifying_key = signer.verifying_key().await.expect("should get key");
+    let jwk = PublicKeyJwk::from_bytes(&verifying_key.to_bytes()).expect("should convert");
+    let update_multi = jwk.to_multibase().expect("should get multibase");
+
+    let id_entry =
+        Keyring::generate(&Vault, "wu", "id", Curve::Ed25519).await.expect("should generate");
+    let verifying_key = id_entry.verifying_key().await.expect("should get key");
+    let jwk = PublicKeyJwk::from_bytes(&verifying_key.to_bytes()).expect("should convert");
+    let id_multi = jwk.to_multibase().expect("should get key");
+
+    let vm = VerificationMethod::build()
+        .key(update_multi.clone())
+        .key_id(KeyId::Authorization(id_multi));
+    let svc = Service::build()
+        .id("whois")
+        .service_type("LinkedVerifiablePresentation")
+        .endpoint("https://example.com/.well-known/whois");
+    let builder = DocumentBuilder::new().verification_method(vm).service(svc);
+
+    let next_key = signer.next_key().await.expect("should get next key");
+    let jwk = PublicKeyJwk::from_bytes(&next_key.to_bytes()).expect("should convert");
+    let next_multi = jwk.to_multibase().expect("should get multibase");
+
+    let witness_1 =
+        Keyring::generate(&Vault, "w1", "signing", Curve::Ed25519).await.expect("should generate");
+    let vk = witness_1.verifying_key().await.expect("should get key");
+    let multi_1 =
+        PublicKeyJwk::from_bytes(&vk.to_bytes()).unwrap().to_multibase().expect("should convert");
+    let witness_2 =
+        Keyring::generate(&Vault, "w2", "signing", Curve::Ed25519).await.expect("should generate");
+    let vk = witness_2.verifying_key().await.expect("should get key");
+    let multi_2 =
+        PublicKeyJwk::from_bytes(&vk.to_bytes()).unwrap().to_multibase().expect("should convert");
+
+    let witnesses = Witness {
+        threshold: 60,
+        witnesses: vec![
+            WitnessWeight {
+                id: format!("did:key:{multi_1}#{multi_1}"),
+                weight: 50,
+            },
+            WitnessWeight {
+                id: format!("did:key:{multi_2}#{multi_2}"),
+                weight: 40,
+            },
+        ],
+    };
+
+    let create_result = CreateBuilder::new("https://credibil.io/issuers/example")
+        .document(builder)
+        .update_keys(vec![update_multi])
+        .next_key(&next_multi)
+        .witness(&witnesses)
+        .ttl(60)
+        .signer(&signer)
+        .build()
+        .await
+        .expect("should build document");
+
+    // --- Update --------------------------------------------------------------
+
+    let document = create_result.document.clone();
+
+    // Rotate the signing key.
+    let signer = Keyring::rotate(&Vault, signer).await.expect("should rotate");
+    let verifying_key = signer.verifying_key().await.expect("should get key");
+    let jwk = PublicKeyJwk::from_bytes(&verifying_key.to_bytes()).expect("should convert");
+    let new_update_multi = jwk.to_multibase().expect("should get multibase");
+
+    let next_key = signer.next_key().await.expect("should get next key");
+    let jwk = PublicKeyJwk::from_bytes(&next_key.to_bytes()).expect("should convert");
+    let new_next_multi = jwk.to_multibase().expect("should get multibase");
+
+    let id_entry =
+        Keyring::generate(&Vault, "utd", "id", Curve::Ed25519).await.expect("should generate");
+    let verifying_key = id_entry.verifying_key().await.expect("should get key");
+    let jwk = PublicKeyJwk::from_bytes(&verifying_key.to_bytes()).expect("should convert");
+    let id_multi = jwk.to_multibase().expect("should get key");
+
+    let vm = VerificationMethod::build()
+        .key(new_update_multi.clone())
+        .key_id(KeyId::Authorization(id_multi));
+
+    // Add a reference-based verification method as a for-instance.
+    let vm_list = document.verification_method.clone().expect("should get verification methods");
+    let auth_vm = vm_list.first().expect("should get first verification method");
+
+    // Construct a new document from the existing one.
+    let builder =
+        DocumentBuilder::from(document).verification_method(vm).authentication(auth_vm.id.clone());
+
+    // Create an update log entry and skip witness verification.
+    let result = UpdateBuilder::new()
+        .document(builder)
+        .log_entries(create_result.log)
+        .rotate_keys(&vec![new_update_multi], &vec![new_next_multi])
+        .signer(&signer)
+        .build()
+        .await
+        .expect("should build document");
+
+    let logs = serde_json::to_string(&result.log_entries).expect("should serialize log entries");
+    println!("{logs}");
+}

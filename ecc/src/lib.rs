@@ -6,11 +6,11 @@
 mod core;
 mod encrypt;
 mod keyring;
-mod vault;
 mod sign;
+mod vault;
 
 pub use self::core::*;
 pub use self::encrypt::*;
 pub use self::keyring::*;
-pub use self::vault::*;
 pub use self::sign::*;
+pub use self::vault::*;

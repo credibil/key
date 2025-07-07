@@ -12,7 +12,7 @@ N/A
 
 ### Added
 
-* W3C Data Integrity Proof type and helper methods
+* W3C Data Integrity Binding type and helper methods
 
 ### Changed
 

@@ -1,0 +1,29 @@
+[package]
+name = "credibil-binding"
+description = "Credibil key binding"
+readme = "README.md"
+authors.workspace = true
+edition.workspace = true
+exclude.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow.workspace = true
+credibil-core.workspace = true
+credibil-did.workspace = true
+credibil-ecc.workspace = true
+credibil-jose.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true

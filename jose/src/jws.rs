@@ -310,7 +310,7 @@ impl PublicKeyJwk {
     // Verify the signature of the provided message using the ES256K algorithm.
     fn verify_es256k(&self, msg: &[u8], sig: &[u8]) -> Result<()> {
         // build verifying key
-        let y = self.y.as_ref().ok_or_else(|| anyhow!("Proof JWT 'y' is invalid"))?;
+        let y = self.y.as_ref().ok_or_else(|| anyhow!("Binding JWT 'y' is invalid"))?;
         let mut sec1 = vec![0x04]; // uncompressed format
         sec1.append(&mut Base64UrlUnpadded::decode_vec(&self.x)?);
         sec1.append(&mut Base64UrlUnpadded::decode_vec(y)?);
