@@ -221,11 +221,7 @@ impl<S: Signer> CreateBuilder<WithUpdateKeys, WithSigner<'_, S>, WithDocument> {
         log_entry.version_id = format!("1-{entry_hash}");
         log_entry.sign(self.signer.0).await?;
 
-        Ok(CreateResult {
-            did,
-            document: log_entry.state.clone(),
-            log: vec![log_entry],
-        })
+        Ok(CreateResult { did, document: log_entry.state.clone(), log: vec![log_entry] })
     }
 }
 

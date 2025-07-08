@@ -113,10 +113,7 @@ impl Jws {
             bail!("no signature found");
         };
 
-        Ok(Jwt {
-            header: signature.protected.clone(),
-            claims: self.payload()?,
-        })
+        Ok(Jwt { header: signature.protected.clone(), claims: self.payload()? })
     }
 
     /// Encode the provided header and claims payload and sign, returning a JWT
@@ -193,10 +190,7 @@ impl FromStr for Jws {
 
         Ok(Self {
             payload: parts[1].to_string(),
-            signatures: vec![Signature {
-                protected,
-                signature: parts[2].to_string(),
-            }],
+            signatures: vec![Signature { protected, signature: parts[2].to_string() }],
         })
     }
 }
@@ -369,12 +363,7 @@ impl JwsBuilder<NoPayload, NoSigners, NoKey> {
     #[must_use]
     pub fn new() -> Self {
         // set defaults
-        Self {
-            typ: "jwt".into(),
-            payload: NoPayload,
-            signers: NoSigners,
-            key: NoKey,
-        }
+        Self { typ: "jwt".into(), payload: NoPayload, signers: NoSigners, key: NoKey }
     }
 }
 
@@ -382,12 +371,7 @@ impl<K> JwsBuilder<NoPayload, NoSigners, K> {
     /// Set the payload to be signed.
     #[must_use]
     pub fn payload<T: Serialize + Send>(self, payload: T) -> JwsBuilder<Payload<T>, NoSigners, K> {
-        JwsBuilder {
-            typ: self.typ,
-            payload: Payload(payload),
-            signers: NoSigners,
-            key: self.key,
-        }
+        JwsBuilder { typ: self.typ, payload: Payload(payload), signers: NoSigners, key: self.key }
     }
 }
 

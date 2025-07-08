@@ -138,10 +138,8 @@ impl Jwe {
         };
 
         // add recipient data to protected header
-        let mut protected = ProtectedFlat {
-            inner: self.protected.clone(),
-            epk: recipient.header.epk.clone(),
-        };
+        let mut protected =
+            ProtectedFlat { inner: self.protected.clone(), epk: recipient.header.epk.clone() };
         protected.inner.alg = Some(recipient.header.alg.clone());
 
         let bytes = serde_json::to_vec(&protected)?;

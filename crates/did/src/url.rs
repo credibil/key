@@ -301,10 +301,7 @@ mod tests {
         assert_eq!(url.path, None);
         assert_eq!(
             url.query,
-            Some(QueryParams {
-                service: Some("example".to_string()),
-                ..Default::default()
-            })
+            Some(QueryParams { service: Some("example".to_string()), ..Default::default() })
         );
         assert_eq!(url.fragment, Some("key-1".to_string()));
         assert_eq!(url.resource_id(), "did:key:123456789abcdefghi#key-1");

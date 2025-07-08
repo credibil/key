@@ -166,12 +166,11 @@ pub async fn verify_witness(
             continue;
         }
         for proof in &witness.proof {
-            if matches!(verify_proof(log_entry, proof, &ProofSigner::Witness), Ok(())) {
-                if let Some(witness_weight) =
+            if matches!(verify_proof(log_entry, proof, &ProofSigner::Witness), Ok(()))
+                && let Some(witness_weight) =
                     witness_weights.witnesses.iter().find(|w| w.id == proof.verification_method)
-                {
-                    total_weight += witness_weight.weight;
-                }
+            {
+                total_weight += witness_weight.weight;
             }
         }
     }

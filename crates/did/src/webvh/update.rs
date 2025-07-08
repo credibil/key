@@ -306,11 +306,7 @@ impl<S: Signer> UpdateBuilder<WithDocument, WithLog, WithSigner<'_, S>> {
 
         log_entries.push(entry);
 
-        Ok(UpdateResult {
-            did: document.id.clone(),
-            document,
-            log_entries,
-        })
+        Ok(UpdateResult { did: document.id.clone(), document, log_entries })
     }
 }
 

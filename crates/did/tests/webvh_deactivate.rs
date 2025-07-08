@@ -53,14 +53,8 @@ async fn create_deactivate() {
     let witnesses = Witness {
         threshold: 60,
         witnesses: vec![
-            WitnessWeight {
-                id: format!("did:key:{multi_1}#{multi_1}"),
-                weight: 50,
-            },
-            WitnessWeight {
-                id: format!("did:key:{multi_2}#{multi_2}"),
-                weight: 40,
-            },
+            WitnessWeight { id: format!("did:key:{multi_1}#{multi_1}"), weight: 50 },
+            WitnessWeight { id: format!("did:key:{multi_2}#{multi_2}"), weight: 40 },
         ],
     };
 
@@ -132,14 +126,8 @@ async fn update_deactivate() {
     let witnesses = Witness {
         threshold: 60,
         witnesses: vec![
-            WitnessWeight {
-                id: format!("did:key:{multi_1}#{multi_1}"),
-                weight: 50,
-            },
-            WitnessWeight {
-                id: format!("did:key:{multi_2}#{multi_2}"),
-                weight: 40,
-            },
+            WitnessWeight { id: format!("did:key:{multi_1}#{multi_1}"), weight: 50 },
+            WitnessWeight { id: format!("did:key:{multi_2}#{multi_2}"), weight: 40 },
         ],
     };
 

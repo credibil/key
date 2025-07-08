@@ -20,19 +20,13 @@ pub struct WithDocument(DocumentBuilder<FromScratch>);
 impl CreateBuilder<NoDocument> {
     /// Create a new `CreateBuilder`.
     pub fn new(url: impl Into<String>) -> Self {
-        Self {
-            url: url.into(),
-            document: NoDocument,
-        }
+        Self { url: url.into(), document: NoDocument }
     }
 
     /// Add a populated [`DocumentBuilder`] instance.
     #[must_use]
     pub fn document(self, builder: DocumentBuilder<FromScratch>) -> CreateBuilder<WithDocument> {
-        CreateBuilder {
-            url: self.url,
-            document: WithDocument(builder),
-        }
+        CreateBuilder { url: self.url, document: WithDocument(builder) }
     }
 }
 

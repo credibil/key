@@ -49,12 +49,12 @@ pub fn parse_url(url: &str) -> anyhow::Result<String> {
     if let Some(port) = url.port() {
         let _ = write!(host, "%3A{port}");
     }
-    if let Some(path) = url.path().strip_prefix('/') {
-        if !path.is_empty() {
-            let formatted_path = path.trim_end_matches('/');
-            let formatted_path = formatted_path.replace('/', ":");
-            let _ = write!(host, ":{formatted_path}");
-        }
+    if let Some(path) = url.path().strip_prefix('/')
+        && !path.is_empty()
+    {
+        let formatted_path = path.trim_end_matches('/');
+        let formatted_path = formatted_path.replace('/', ":");
+        let _ = write!(host, ":{formatted_path}");
     }
     Ok(host)
 }

@@ -80,9 +80,7 @@ pub enum KeyFormat {
 
 impl Default for KeyFormat {
     fn default() -> Self {
-        Self::Multikey {
-            public_key_multibase: String::new(),
-        }
+        Self::Multikey { public_key_multibase: String::new() }
     }
 }
 
@@ -122,9 +120,7 @@ impl From<PublicKeyJwk> for KeyFormat {
 
 impl From<String> for KeyFormat {
     fn from(multibase: String) -> Self {
-        Self::Multikey {
-            public_key_multibase: multibase,
-        }
+        Self::Multikey { public_key_multibase: multibase }
     }
 }
 

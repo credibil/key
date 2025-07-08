@@ -234,11 +234,7 @@ impl<S: Signer> DeactivateBuilder<WithSigner<'_, S>> {
         entry.sign(self.signer.0).await?;
         log.push(entry);
 
-        Ok(DeactivateResult {
-            did: doc.id.clone(),
-            document: doc,
-            log,
-        })
+        Ok(DeactivateResult { did: doc.id.clone(), document: doc, log })
     }
 }
 

@@ -30,9 +30,7 @@ pub fn resolve(url: &Url) -> Result<Resource> {
         context: None,
         id: url.resource_id(),
         controller: url.did(),
-        key: KeyFormat::Multikey {
-            public_key_multibase: fragment.to_string(),
-        },
+        key: KeyFormat::Multikey { public_key_multibase: fragment.to_string() },
     };
     Ok(Resource::VerificationMethod(vm))
 }

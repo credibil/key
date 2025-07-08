@@ -18,13 +18,13 @@ use crate::{Document, Service, VerificationMethod};
 /// # Errors
 /// Will return an error if the resource is not found in the document.
 pub fn resource(url: &Url, doc: &Document) -> Result<Resource> {
-    if let Some(query) = &url.query {
-        if let Some(service_id) = &query.service {
-            if let Some(service) = doc.service(service_id) {
-                return Ok(Resource::Service(service.clone()));
-            }
-            bail!("service {service_id} not found in document");
+    if let Some(query) = &url.query
+        && let Some(service_id) = &query.service
+    {
+        if let Some(service) = doc.service(service_id) {
+            return Ok(Resource::Service(service.clone()));
         }
+        bail!("service {service_id} not found in document");
     }
     if url.fragment.is_none() {
         return Ok(Resource::Document(doc.clone()));

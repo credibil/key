@@ -108,10 +108,7 @@ impl<P> JweBuilder<P> {
     ///   the content.
     #[must_use]
     pub fn add_recipient(mut self, key_id: impl Into<String>, public_key: PublicKey) -> Self {
-        self.recipients.push(Recipient {
-            key_id: key_id.into(),
-            public_key,
-        });
+        self.recipients.push(Recipient { key_id: key_id.into(), public_key });
         self
     }
 }
@@ -134,10 +131,7 @@ impl<T: Serialize + Send> JweBuilder<Payload<T>> {
             .build()?;
 
         // encrypt content
-        let protected = Protected {
-            enc: self.content_algorithm.clone(),
-            alg: None,
-        };
+        let protected = Protected { enc: self.content_algorithm.clone(), alg: None };
         let aad = serde_json::to_vec(&protected)?;
 
         let payload = match &self.payload {
@@ -169,10 +163,7 @@ impl KeyEncrypterBuilder {
     // Create a new key encryption builder.
     #[must_use]
     pub fn new() -> Self {
-        Self {
-            alg: AlgAlgorithm::default(),
-            recipients: vec![],
-        }
+        Self { alg: AlgAlgorithm::default(), recipients: vec![] }
     }
 
     // Set the key encryption algorithm.
@@ -217,10 +208,7 @@ impl KeyEncrypterBuilder {
                     },
                     encrypted_key: Base64UrlUnpadded::encode_string(&[0; PUBLIC_KEY_LENGTH]),
                 };
-                Ok(KeyEncrypter {
-                    cek,
-                    recipients: Recipients::One(key_encryption),
-                })
+                Ok(KeyEncrypter { cek, recipients: Recipients::One(key_encryption) })
             }
             AlgAlgorithm::EcdhEsA256Kw => {
                 let (cek, _) = self.alg.generate_cek(&PublicKey::empty());
@@ -228,10 +216,7 @@ impl KeyEncrypterBuilder {
                 for recipient in &self.recipients {
                     recipients.push(ecdh_a256kw(&cek, recipient)?);
                 }
-                Ok(KeyEncrypter {
-                    cek,
-                    recipients: Recipients::Many { recipients },
-                })
+                Ok(KeyEncrypter { cek, recipients: Recipients::Many { recipients } })
             }
             AlgAlgorithm::EciesEs256K => {
                 let (cek, _) = self.alg.generate_cek(&PublicKey::empty());
@@ -239,10 +224,7 @@ impl KeyEncrypterBuilder {
                 for recipient in &self.recipients {
                     recipients.push(ecies_es256k(&cek, recipient)?);
                 }
-                Ok(KeyEncrypter {
-                    cek,
-                    recipients: Recipients::Many { recipients },
-                })
+                Ok(KeyEncrypter { cek, recipients: Recipients::Many { recipients } })
             }
         }
     }

@@ -301,19 +301,13 @@ impl From<[u8; 65]> for PublicKey {
 
 impl From<x25519_dalek::PublicKey> for PublicKey {
     fn from(val: x25519_dalek::PublicKey) -> Self {
-        Self {
-            x: val.to_bytes(),
-            y: None,
-        }
+        Self { x: val.to_bytes(), y: None }
     }
 }
 
 impl From<ed25519_dalek::VerifyingKey> for PublicKey {
     fn from(val: ed25519_dalek::VerifyingKey) -> Self {
-        Self {
-            x: val.to_bytes(),
-            y: None,
-        }
+        Self { x: val.to_bytes(), y: None }
     }
 }
 

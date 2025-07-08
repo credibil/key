@@ -53,10 +53,10 @@ impl Url {
         // 7. Append `/did.jsonl` (default) or the specified file sub-path to
         // the URL to complete it.
         let mut fp = "/did.jsonl".to_string();
-        if let Some(path) = &self.path {
-            if !path.is_empty() {
-                fp = path.join("/");
-            }
+        if let Some(path) = &self.path
+            && !path.is_empty()
+        {
+            fp = path.join("/");
         }
         let url = format!("{url}{fp}");
 
@@ -174,19 +174,20 @@ pub async fn resolve_log(
         prev_next_key_hashes.clone_from(&log[i].parameters.next_key_hashes);
 
         // 9. Check witness proofs if provided.
-        if proofs.is_some() && log[i].parameters.witness.is_some() {
-            if let Some(witness_entries) = proofs {
-                verify_witness(&log[i], witness_entries).await?;
-            }
+        if proofs.is_some()
+            && log[i].parameters.witness.is_some()
+            && let Some(witness_entries) = proofs
+        {
+            verify_witness(&log[i], witness_entries).await?;
         }
 
         // Check for explicit version ID or version time request. (Otherwise
         // the latest version is returned.)
         if let Some(params) = parameters {
-            if let Some(version_id) = &params.version_id {
-                if *version_id == log[i].version_id {
-                    break;
-                }
+            if let Some(version_id) = &params.version_id
+                && *version_id == log[i].version_id
+            {
+                break;
             }
             if let Some(version_time) = &params.version_time {
                 let version_time = version_time.parse::<DateTime<Utc>>()?;

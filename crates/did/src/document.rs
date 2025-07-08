@@ -414,10 +414,7 @@ impl DocumentBuilder<FromScratch> {
     /// Will fail if the document is missing required fields or if
     /// verification methods are not properly set up.
     pub(crate) fn build(self, did: impl Into<String>) -> Result<Document> {
-        let document = Document {
-            id: did.into(),
-            ..Document::default()
-        };
+        let document = Document { id: did.into(), ..Document::default() };
         self.inner_build(document)
     }
 }
@@ -657,9 +654,7 @@ impl DocumentMetadataBuilder {
     /// Creates a new `DocumentMetadataBuilder`.
     #[must_use]
     pub fn new() -> Self {
-        Self {
-            md: DocumentMetadata::default(),
-        }
+        Self { md: DocumentMetadata::default() }
     }
 
     /// Creates a new `DocumentMetadataBuilder` from an existing

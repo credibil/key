@@ -122,11 +122,7 @@ impl FromStr for Jwe {
         Ok(Self {
             protected,
             recipients: Recipients::One(KeyEncryption {
-                header: Header {
-                    alg,
-                    epk,
-                    ..Header::default()
-                },
+                header: Header { alg, epk, ..Header::default() },
                 encrypted_key: parts[1].to_string(),
             }),
             aad: Base64UrlUnpadded::encode_string(&aad_bytes),

@@ -160,11 +160,7 @@ impl EncAlgorithm {
             }
         };
 
-        Ok(Encrypted {
-            iv: nonce,
-            tag,
-            ciphertext: buffer,
-        })
+        Ok(Encrypted { iv: nonce, tag, ciphertext: buffer })
     }
 }
 
