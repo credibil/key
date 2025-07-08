@@ -12,7 +12,7 @@ exclude = [".*", "snapshots/"]
 homepage = "https://credibil.io"
 keywords = ["credentials", "decentralized", "identity", "openid", "verifiable"]
 repository = "https://github.com/credibil"
-rust-version = "1.87"
+rust-version = "1.88"
 version = "0.1.2"
 
 [workspace.lints.rust]
