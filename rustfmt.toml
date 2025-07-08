@@ -12,7 +12,3 @@ imports_granularity = "Module"
 reorder_impl_items = true
 unstable_features = true
 use_field_init_shorthand = true
-
-# struct_lit_width = 20
-# wrap_comments = true
-# comment_width = 80
