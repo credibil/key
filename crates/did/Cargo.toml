@@ -26,6 +26,7 @@ credibil-ecc.workspace = true
 credibil-jose.workspace = true
 multibase = "0.9.1"
 nom = "8.0.0"
+percent-encoding = "2.3.1"
 serde.workspace = true
 serde_json.workspace = true
 serde_json_canonicalizer = "0.3.0"
@@ -40,4 +41,3 @@ serde_json.workspace = true
 test-utils.workspace = true
 tokio = { version = "1.46.1", features = ["full"] }
 tower-http = { version = "0.6.6", features = ["fs"] }
-

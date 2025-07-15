@@ -1,9 +1,11 @@
 //! Helper functions for converting HTTP URLs into `did:web` DIDs.
 
-use std::fmt::Write;
-
 use anyhow::{Result, bail};
+use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
 use url::Url;
+
+const UNRESERVED: &AsciiSet =
+    &NON_ALPHANUMERIC.remove(b'.').remove(b'_').remove(b'-').remove(b'~').remove(b'/').remove(b':');
 
 /// Construct a `did:web` DID from a valid HTTP URL.
 ///
@@ -38,15 +40,17 @@ fn parse_url(url: &str) -> Result<String> {
 
     let mut host = host_str.to_string();
     if let Some(port) = url.port() {
-        let _ = write!(host, "%3A{port}");
+        host = format!("{host}%3A{port}");
     }
-    if let Some(path) = url.path().strip_prefix('/')
-        && !path.is_empty()
+
+    if let Some(http_path) = url.path().strip_prefix('/')
+        && !http_path.is_empty()
     {
-        let formatted_path = path.trim_end_matches('/');
-        let formatted_path = formatted_path.replace('/', ":");
-        let _ = write!(host, ":{formatted_path}");
+        let encoded = utf8_percent_encode(&http_path, UNRESERVED).to_string();
+        let did_path = encoded.trim_end_matches('/').replace('/', ":");
+        host = format!("{host}:{did_path}");
     }
+
     Ok(host)
 }
 
@@ -67,5 +71,9 @@ mod tests {
         let url = "https://example.com:8080";
         let did_url = parse_url(url).expect("should parse");
         assert_eq!(did_url, "example.com%3A8080");
+
+        let url = "https://example.com:8080/some.user@example.com";
+        let did_url = parse_url(url).expect("should parse");
+        assert_eq!(did_url, "example.com%3A8080:some.user%40example.com");
     }
 }

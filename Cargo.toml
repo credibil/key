@@ -34,7 +34,7 @@ credibil-jose = { path = "jose" }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = { version = "1.0.140", features = ["alloc"] }
 test-utils = { path = "crates/test-utils" }
-tokio = { version = "1.45.1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.46.1", features = ["macros", "rt-multi-thread"] }
 tracing = "0.1.41"
 zeroize = "1.8.1"
 
