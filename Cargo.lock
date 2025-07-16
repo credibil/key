@@ -369,7 +369,6 @@ dependencies = [
  "credibil-jose",
  "multibase",
  "nom",
- "percent-encoding",
  "serde",
  "serde-jsonlines",
  "serde_json",

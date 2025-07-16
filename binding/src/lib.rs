@@ -27,7 +27,6 @@ pub async fn resolve_jwk<'a>(
     let jwk = match url.into() {
         UrlType::Did(url) => {
             let did_url = credibil_did::Url::from_str(url)?;
-
             let resource = match did_url.method {
                 Method::Key => credibil_did::key::resolve(&did_url)?,
                 Method::Web => {

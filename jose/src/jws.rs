@@ -98,7 +98,7 @@ impl Jws {
         for signature in &self.signatures {
             let header = &signature.protected;
             let Some(kid) = header.kid() else {
-                return Err(anyhow!("Missing key ID in JWS signature"));
+                return Err(anyhow!("missing key ID in JWS signature"));
             };
 
             // dereference `kid` to JWK matching key ID

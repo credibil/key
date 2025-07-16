@@ -21,10 +21,8 @@ impl Url {
     pub fn to_web_http(&self) -> String {
         // 1. Replace ":" with "/" in the method specific identifier to obtain the fully
         //    qualified domain name and optional path.
-        let domain = self.id.replace(':', "/");
-
         // 2. If the domain contains a port percent decode the colon.
-        let domain = domain.replace("%3A", ":");
+        let domain = self.id.replace(':', "/").replace("%3A", ":");
 
         // 3. Generate an HTTPS URL to the expected location of the DID document by
         //    prepending https://.

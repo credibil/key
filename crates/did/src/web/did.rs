@@ -1,11 +1,7 @@
 //! Helper functions for converting HTTP URLs into `did:web` DIDs.
 
 use anyhow::{Result, bail};
-use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
 use url::Url;
-
-const UNRESERVED: &AsciiSet =
-    &NON_ALPHANUMERIC.remove(b'.').remove(b'_').remove(b'-').remove(b'~').remove(b'/').remove(b':');
 
 /// Construct a `did:web` DID from a valid HTTP URL.
 ///
@@ -46,8 +42,7 @@ fn parse_url(url: &str) -> Result<String> {
     if let Some(http_path) = url.path().strip_prefix('/')
         && !http_path.is_empty()
     {
-        let encoded = utf8_percent_encode(&http_path, UNRESERVED).to_string();
-        let did_path = encoded.trim_end_matches('/').replace('/', ":");
+        let did_path = http_path.trim_end_matches('/').replace('/', ":");
         host = format!("{host}:{did_path}");
     }
 
