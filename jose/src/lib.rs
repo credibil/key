@@ -44,7 +44,7 @@ mod jwk;
 mod jws;
 mod jwt;
 
-pub use jwk::PublicKeyJwk;
+pub use jwk::{Jwks, PublicKeyJwk};
 pub use jws::{Jws, JwsBuilder, Protected, Signature, decode_jws, encode_jws};
 pub use jwt::Jwt;
 use serde::{Deserialize, Serialize};

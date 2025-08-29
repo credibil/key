@@ -75,6 +75,21 @@ impl Entry {
             .map_err(|e| anyhow!("issue serializing entry: {e}"))?;
         Ok(data)
     }
+
+    /// Generate a new key entry.
+    ///
+    /// # Errors
+    /// Will return an error if keys cannot be generated for the specified
+    /// curve.
+    pub fn generate(owner: &str, key_id: &str, curve: &Curve) -> Result<Self> {
+        Ok(Self {
+            owner: owner.to_string(),
+            key_id: key_id.to_string(),
+            curve: curve.clone(),
+            secret_key: curve.generate().try_into()?,
+            next_secret_key: curve.generate().try_into()?,
+        })
+    }
 }
 
 impl Signer for Entry {
@@ -195,13 +210,7 @@ impl<T: Vault> Keyring for T {
     type Entry = Entry;
 
     async fn generate(&self, owner: &str, key_id: &str, curve: Curve) -> Result<Self::Entry> {
-        let entry = Entry {
-            owner: owner.to_string(),
-            key_id: key_id.to_string(),
-            curve: curve.clone(),
-            secret_key: curve.generate().try_into()?,
-            next_secret_key: curve.generate().try_into()?,
-        };
+        let entry = Entry::generate(owner, key_id, &curve)?;
         Vault::put(self, owner, "VAULT", key_id, &entry.to_bytes()?).await?;
 
         Ok(entry)

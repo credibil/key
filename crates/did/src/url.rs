@@ -64,11 +64,12 @@ impl Display for Url {
         }
         if let Some(query) = &self.query {
             write!(f, "?")?;
-            let mut first = true;
-            if let Some(service) = &query.service {
+            let mut first = if let Some(service) = &query.service {
                 write!(f, "service={service}")?;
-                first = false;
-            }
+                false
+            } else {
+                true
+            };
             if let Some(relative_ref) = &query.relative_ref {
                 if !first {
                     write!(f, "&")?;

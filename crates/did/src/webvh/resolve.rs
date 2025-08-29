@@ -52,12 +52,13 @@ impl Url {
 
         // 7. Append `/did.jsonl` (default) or the specified file sub-path to
         // the URL to complete it.
-        let mut fp = "/did.jsonl".to_string();
-        if let Some(path) = &self.path
+        let fp = if let Some(path) = &self.path
             && !path.is_empty()
         {
-            fp = path.join("/");
-        }
+            path.join("/")
+        } else {
+            "/did.jsonl".to_string()
+        };
         let url = format!("{url}{fp}");
 
         Ok(url)

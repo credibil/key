@@ -45,6 +45,7 @@ fn parse_url(url: &str) -> Result<String> {
         let did_path = http_path.trim_end_matches('/').replace('/', ":");
         host = format!("{host}:{did_path}");
     }
+    let host = host.replace('@', "%40");
 
     Ok(host)
 }
