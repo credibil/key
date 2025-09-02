@@ -342,7 +342,7 @@ dependencies = [
 
 [[package]]
 name = "credibil-binding"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "credibil-api",
@@ -365,7 +365,7 @@ dependencies = [
 
 [[package]]
 name = "credibil-did"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "axum",
@@ -389,7 +389,7 @@ dependencies = [
 
 [[package]]
 name = "credibil-ecc"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "aes-gcm",
  "aes-kw",
