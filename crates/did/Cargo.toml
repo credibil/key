@@ -21,6 +21,7 @@ workspace = true
 [dependencies]
 anyhow.workspace = true
 chrono = { version = "0.4.41", features = ["serde"] }
+credibil-api.workspace = true
 credibil-core.workspace = true
 credibil-ecc.workspace = true
 credibil-jose.workspace = true

@@ -78,9 +78,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.98"
+version = "1.0.99"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e16d2d3311acee920a9eb8d33b8cbc1787ce4a264e85f964c2404b969bdcd487"
+checksum = "b0674a1ddeecb70197781e945de4b3b8ffb61fa939a5597bcf48503737663100"
 
 [[package]]
 name = "arrayref"
@@ -328,11 +328,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "credibil-api"
+version = "0.0.0"
+source = "git+https://github.com/credibil/core#a41dc199a20a220fe53cd0718c20862a7df6b3b0"
+dependencies = [
+ "bytes",
+ "http",
+ "http-body",
+ "http-body-util",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "credibil-binding"
 version = "0.1.2"
 dependencies = [
  "anyhow",
- "credibil-core",
+ "credibil-api",
  "credibil-did",
  "credibil-ecc",
  "credibil-jose",
@@ -343,18 +356,11 @@ dependencies = [
 [[package]]
 name = "credibil-core"
 version = "0.1.0"
-source = "git+https://github.com/credibil/core.git#37f6a37a564a9978132aecc9dd09f6155b42a8df"
+source = "git+https://github.com/credibil/core#a41dc199a20a220fe53cd0718c20862a7df6b3b0"
 dependencies = [
  "anyhow",
- "bytes",
  "chrono",
- "http",
- "http-body",
- "http-body-util",
- "percent-encoding",
  "serde",
- "serde_json",
- "tracing",
 ]
 
 [[package]]
@@ -364,6 +370,7 @@ dependencies = [
  "anyhow",
  "axum",
  "chrono",
+ "credibil-api",
  "credibil-core",
  "credibil-ecc",
  "credibil-jose",
@@ -1558,9 +1565,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.140"
+version = "1.0.143"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20068b6e96dc6c9bd23e01df8827e6c7e1f2fddd43c21810382803c136b99373"
+checksum = "d401abef1d108fbd9cbaebc3e46611f4b1021f714a0597a71f41ee463f5f4a5a"
 dependencies = [
  "itoa",
  "memchr",

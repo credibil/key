@@ -25,9 +25,10 @@ pedantic = "warn"
 nursery = "warn"
 
 [workspace.dependencies]
-anyhow = "1.0.98"
+anyhow = "1.0.99"
 base64ct = { version = "1.8.0", features = ["std"] }
-credibil-core = { git = "https://github.com/credibil/core.git" }
+credibil-api = { git = "https://github.com/credibil/core" }
+credibil-core = { git = "https://github.com/credibil/core" }
 credibil-did = { path = "crates/did" }
 credibil-ecc = { path = "ecc" }
 credibil-jose = { path = "jose" }
