@@ -277,7 +277,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+    #[ignore = "path parsing not implemented"]
     fn url_with_path() {
         let url = Url::from_str("did:key:123456789abcdefghi/path/to/resource#key-1")
             .expect("should parse url");
@@ -310,7 +310,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+    #[ignore = "path parsing not implemented"]
     fn url_with_the_works() {
         let url = Url::from_str(
             "did:key:123456789abcdefghi/path/to/resource?service=example&hl=hashlink#key-1",
@@ -451,7 +451,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+    #[ignore = "path parsing not implemented"]
     fn test_parse_path() {
         let s = "?service=example#key-1";
         assert!(path(s).is_err());

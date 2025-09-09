@@ -261,13 +261,13 @@ mod test {
 
     // Use top-level encrypt method to shortcut using the builder
     #[tokio::test]
+    #[cfg_attr(miri, ignore)]
     async fn simple() {
         let entry = Keyring::generate(&Store, "owner", "key-1", Curve::X25519).await.unwrap();
         let public_key = entry.public_key().await.expect("should get key");
-        let pk = PublicKey::try_from(public_key).expect("should convert");
 
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
-        let jwe = encrypt(plaintext, pk).expect("should encrypt");
+        let jwe = encrypt(plaintext, public_key).expect("should encrypt");
 
         let decrypted: String = decrypt(&jwe, &entry).await.expect("should decrypt");
         assert_eq!(plaintext, decrypted);
@@ -275,13 +275,13 @@ mod test {
 
     // Compact serialization/deserialization
     #[tokio::test]
+    #[cfg_attr(miri, ignore)]
     async fn compact() {
         let entry = Keyring::generate(&Store, "owner", "key-1", Curve::X25519).await.unwrap();
         let public_key = entry.public_key().await.expect("should get key");
-        let pk = PublicKey::try_from(public_key).expect("should convert");
 
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
-        let jwe = encrypt(plaintext, pk).expect("should encrypt");
+        let jwe = encrypt(plaintext, public_key).expect("should encrypt");
 
         // serialize/deserialize
         let compact_jwe = jwe.encode().expect("should encode");
@@ -293,15 +293,15 @@ mod test {
 
     // round trip: encrypt and then decrypt
     #[tokio::test]
+    #[cfg_attr(miri, ignore)]
     async fn default() {
         let entry = Keyring::generate(&Store, "owner", "key-1", Curve::X25519).await.unwrap();
         let public_key = entry.public_key().await.expect("should get key");
-        let pk = PublicKey::try_from(public_key).expect("should convert");
 
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
         let jwe = JweBuilder::new()
             .payload(&plaintext)
-            .add_recipient("did:example:alice#key-id", pk)
+            .add_recipient("did:example:alice#key-id", public_key)
             .build()
             .expect("should encrypt");
 
@@ -310,17 +310,17 @@ mod test {
     }
 
     #[tokio::test]
+    #[cfg_attr(miri, ignore)]
     async fn ecdh_es_a256kw() {
         let entry = Keyring::generate(&Store, "owner", "key-1", Curve::X25519).await.unwrap();
         let public_key = entry.public_key().await.expect("should get key");
-        let pk = PublicKey::try_from(public_key).expect("should convert");
 
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
         let jwe = JweBuilder::new()
             .content_algorithm(EncAlgorithm::A256Gcm)
             .key_algorithm(AlgAlgorithm::EcdhEsA256Kw)
             .payload(&plaintext)
-            .add_recipient("key-1", pk)
+            .add_recipient("key-1", public_key)
             .build()
             .expect("should encrypt");
 
@@ -329,15 +329,15 @@ mod test {
     }
 
     #[tokio::test]
+    #[cfg_attr(miri, ignore)]
     async fn ed25519() {
         let entry = Keyring::generate(&Store, "owner", "key-1", Curve::Ed25519).await.unwrap();
         let public_key = entry.public_key().await.expect("should get key");
-        let pk = PublicKey::try_from(public_key).expect("should convert");
 
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
         let jwe = JweBuilder::new()
             .payload(&plaintext)
-            .add_recipient("key-1", pk)
+            .add_recipient("key-1", public_key)
             .build()
             .expect("should encrypt");
 
@@ -346,17 +346,17 @@ mod test {
     }
 
     #[tokio::test]
+    #[cfg_attr(miri, ignore)]
     async fn ecies_es256k() {
         let entry = Keyring::generate(&Store, "owner", "key-1", Curve::Es256K).await.unwrap();
         let public_key = entry.public_key().await.expect("should get key");
-        let pk = PublicKey::try_from(public_key).expect("should convert");
 
         let plaintext = "The true sign of intelligence is not knowledge but imagination.";
         let jwe = JweBuilder::new()
             .content_algorithm(EncAlgorithm::A256Gcm)
             .key_algorithm(AlgAlgorithm::EciesEs256K)
             .payload(&plaintext)
-            .add_recipient("key-1", pk)
+            .add_recipient("key-1", public_key)
             .build()
             .expect("should encrypt");
 
@@ -394,7 +394,7 @@ mod test {
             let all = STORE
                 .iter()
                 .filter(move |r| r.key().starts_with(&format!("{owner}-{partition}-")))
-                .map(|r| (r.key().to_string(), r.value().clone()))
+                .map(|r| (r.key().clone(), r.value().clone()))
                 .collect::<Vec<_>>();
             Ok(all)
         }

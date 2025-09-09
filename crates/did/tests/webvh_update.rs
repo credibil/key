@@ -10,6 +10,7 @@ use test_utils::Vault;
 // Test the happy path of creating then updating a `did:webvh` document and log
 // entries. Should just work without errors.
 #[tokio::test]
+#[cfg_attr(miri, ignore)]
 async fn update_ok() {
     let signer =
         Keyring::generate(&Vault, "wu", "signing", Curve::Ed25519).await.expect("should generate");
@@ -102,7 +103,7 @@ async fn update_ok() {
     let result = UpdateBuilder::new()
         .document(builder)
         .log_entries(create_result.log)
-        .rotate_keys(&vec![new_update_multi], &vec![new_next_multi])
+        .rotate_keys(&[new_update_multi], &[new_next_multi])
         .signer(&signer)
         .build()
         .await

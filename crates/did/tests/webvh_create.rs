@@ -10,6 +10,7 @@ use test_utils::Vault;
 // Test the happy path of creating a new `did:webvh` document and associated log
 // entry. Should just work without errors.
 #[tokio::test]
+#[cfg_attr(miri, ignore)]
 async fn create_ok() {
     let signer = Keyring::generate(&Vault, "wvhc", "signing", Curve::Ed25519)
         .await

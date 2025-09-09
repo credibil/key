@@ -12,6 +12,7 @@ use test_utils::Vault;
 // Test the happy path of creating then deactivating a `did:webvh` document and
 // log entries. Should just work without errors.
 #[tokio::test]
+#[cfg_attr(miri, ignore)]
 async fn create_deactivate() {
     let signer = Keyring::generate(&Vault, "wvhd", "signing", Curve::Ed25519)
         .await
@@ -86,6 +87,7 @@ async fn create_deactivate() {
 // Test the happy path of updating then deactivating a `did:webvh` document and
 // log entries. Should just work without errors.
 #[tokio::test]
+#[cfg_attr(miri, ignore)]
 async fn update_deactivate() {
     let signer =
         Keyring::generate(&Vault, "utd", "signing", Curve::Ed25519).await.expect("should generate");
@@ -178,7 +180,7 @@ async fn update_deactivate() {
     let update_result = UpdateBuilder::new()
         .document(builder)
         .log_entries(create_result.log)
-        .rotate_keys(&vec![new_update_multi], &vec![new_next_multi])
+        .rotate_keys(&[new_update_multi], &[new_next_multi])
         .signer(&signer)
         .build()
         .await
@@ -191,15 +193,15 @@ async fn update_deactivate() {
     let jwk = PublicKeyJwk::from_bytes(&verifying_key.to_bytes()).expect("should convert");
     let new_update_multi = jwk.to_multibase().expect("should get multibase");
 
-    let new_update_keys = vec![new_update_multi.clone()];
-    let new_update_keys: Vec<&str> = new_update_keys.iter().map(|s| s.as_str()).collect();
+    let new_update_keys = [new_update_multi.clone()];
+    let new_update_keys: Vec<&str> = new_update_keys.iter().map(String::as_str).collect();
 
     let next_key = signer.next_key().await.expect("should get next key");
     let jwk = PublicKeyJwk::from_bytes(&next_key.to_bytes()).expect("should convert");
     let new_next_multi = jwk.to_multibase().expect("should get multibase");
 
-    let new_next_keys = vec![new_next_multi.clone()];
-    let new_next_keys: Vec<&str> = new_next_keys.iter().map(|s| s.as_str()).collect();
+    let new_next_keys = [new_next_multi.clone()];
+    let new_next_keys: Vec<&str> = new_next_keys.iter().map(String::as_str).collect();
 
     let deactivate_result = DeactivateBuilder::from(&update_result.log_entries)
         .expect("should create builder")

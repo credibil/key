@@ -12,6 +12,7 @@ use test_utils::Vault;
 
 // Create a new `did:web` document and dereference a resource from it.
 #[tokio::test]
+#[cfg_attr(miri, ignore)]
 async fn dereference() {
     let signer =
         Keyring::generate(&Vault, "wd", "signing", Curve::Ed25519).await.expect("should generate");

@@ -9,6 +9,7 @@ use test_utils::Vault;
 // Create a minimal document and then verify the proof. Should verify without
 // errors.
 #[tokio::test]
+#[cfg_attr(miri, ignore)]
 async fn simple_proof() {
     let signer =
         Keyring::generate(&Vault, "utd", "signing", Curve::Ed25519).await.expect("should generate");
@@ -42,6 +43,7 @@ async fn simple_proof() {
 // Create a document with more options and then verify the proof. Should verify
 // without errors.
 #[tokio::test]
+#[cfg_attr(miri, ignore)]
 async fn complex_proof() {
     let signer = Keyring::generate(&Vault, "wvhd", "signing", Curve::Ed25519)
         .await

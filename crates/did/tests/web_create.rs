@@ -9,6 +9,7 @@ use test_utils::Vault;
 // Test the happy path of creating a new `did:web` document. Should just work
 // without errors.
 #[tokio::test]
+#[cfg_attr(miri, ignore)]
 async fn create_ok() {
     let signer =
         Keyring::generate(&Vault, "wc", "signing", Curve::Ed25519).await.expect("should generate");
@@ -28,5 +29,5 @@ async fn create_ok() {
         .expect("should build document");
 
     let json = serde_json::to_string_pretty(&document).expect("should serialize");
-    print!("{json}");
+    println!("{json}");
 }
