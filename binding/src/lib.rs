@@ -7,7 +7,7 @@ mod provider;
 use std::str::FromStr;
 
 use anyhow::{Result, anyhow};
-pub use credibil_core::api::Client;
+pub use credibil_api::Client;
 use credibil_did::{Method, Resource};
 use credibil_jose::PublicKeyJwk;
 pub use {credibil_did as did, credibil_ecc as ecc, credibil_jose as jose};

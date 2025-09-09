@@ -1,7 +1,7 @@
 //! # Status List Endpoint
 
 use anyhow::anyhow;
-use credibil_core::api::{Body, Handler, Request, Response};
+use credibil_api::{Body, Handler, Request, Response};
 use credibil_did::Document;
 use credibil_did::web::create_did;
 use serde::{Deserialize, Serialize};

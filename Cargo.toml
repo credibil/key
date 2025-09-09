@@ -28,6 +28,7 @@ nursery = "warn"
 anyhow = "1.0.99"
 base64ct = { version = "1.8.0", features = ["std"] }
 credibil-core = { git = "https://github.com/credibil/core.git", tag = "v0.1.0" }
+credibil-api = { git = "https://github.com/credibil/core.git", tag = "v0.1.0" }
 credibil-did = { path = "crates/did" }
 credibil-ecc = { path = "ecc" }
 credibil-jose = { path = "jose" }
