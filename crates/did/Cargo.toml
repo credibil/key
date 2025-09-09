@@ -20,7 +20,7 @@ workspace = true
 
 [dependencies]
 anyhow.workspace = true
-chrono = { version = "0.4.41", features = ["serde"] }
+chrono = { version = "0.4.42", features = ["serde"] }
 credibil-core.workspace = true
 credibil-ecc.workspace = true
 credibil-jose.workspace = true
@@ -28,15 +28,15 @@ multibase = "0.9.1"
 nom = "8.0.0"
 serde.workspace = true
 serde_json.workspace = true
-serde_json_canonicalizer = "0.3.0"
+serde_json_canonicalizer = "0.3.1"
 sha2 = "0.10.9"
-url = "2.5.4"
-uuid = { version = "1.17.0", features = ["v4"] }
+url = "2.5.7"
+uuid = { version = "1.18.1", features = ["v4"] }
 
 [dev-dependencies]
 axum = "0.8.4"
 serde-jsonlines = "0.7.0"
 serde_json.workspace = true
 test-utils.workspace = true
-tokio = { version = "1.46.1", features = ["full"] }
+tokio = { version = "1.47.1", features = ["full"] }
 tower-http = { version = "0.6.6", features = ["fs"] }
