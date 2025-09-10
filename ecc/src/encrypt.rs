@@ -384,7 +384,7 @@ mod tests {
         let ephemeral_dh = ephemeral_secret.diffie_hellman(&alice_montgomery.to_bytes().into());
 
         // RECEIVER: diffie-hellman using ephemeral public
-        let hash = sha2::Sha512::digest(&alice_secret);
+        let hash = sha2::Sha512::digest(alice_secret);
         let mut hashed = [0u8; PUBLIC_KEY_LENGTH];
         hashed.copy_from_slice(&hash[..PUBLIC_KEY_LENGTH]);
         let alice_x_secret = x25519_dalek::StaticSecret::from(hashed);

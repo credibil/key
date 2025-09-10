@@ -10,6 +10,7 @@ use test_utils::Vault;
 
 // Construct a log with a single entry and make sure it resolves to a DID document.
 #[tokio::test]
+#[cfg_attr(miri, ignore)]
 async fn resolve_single() {
     let signer =
         Keyring::generate(&Vault, "wrs", "signing", Curve::Ed25519).await.expect("should generate");
@@ -66,11 +67,11 @@ async fn resolve_single() {
         .await
         .expect("should build document");
 
-    let witness_proof1 = result.log[0].proof(&witness_1).await.expect("should get witness proof");
-    let witness_proof2 = result.log[0].proof(&witness_2).await.expect("should get witness proof");
+    let proof1 = result.log[0].proof(&witness_1).await.expect("should get witness proof");
+    let proof2 = result.log[0].proof(&witness_2).await.expect("should get witness proof");
     let witness_proofs = vec![WitnessEntry {
         version_id: result.log[0].version_id.clone(),
-        proof: vec![witness_proof1, witness_proof2],
+        proof: vec![proof1, proof2],
     }];
 
     let resolved_doc = webvh::resolve_log(&result.log, Some(&witness_proofs), None)
@@ -91,6 +92,8 @@ async fn resolve_single() {
 
 // Construct a log with multiple entries and make sure it resolves to a DID document.
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
+#[cfg_attr(miri, ignore)]
 async fn resolve_multiple() {
     let signer =
         Keyring::generate(&Vault, "wrm", "signing", Curve::Ed25519).await.expect("should generate");
@@ -184,27 +187,23 @@ async fn resolve_multiple() {
     let result = UpdateBuilder::new()
         .document(builder)
         .log_entries(create_result.log)
-        .rotate_keys(&vec![new_update_multi], &vec![new_next_multi])
+        .rotate_keys(&[new_update_multi], &[new_next_multi])
         .signer(&signer)
         .build()
         .await
         .expect("should build document");
 
-    let witness_proof1 =
-        result.log_entries[0].proof(&witness_1).await.expect("should get witness proof");
-    let witness_proof2 =
-        result.log_entries[0].proof(&witness_2).await.expect("should get witness proof");
+    let proof1 = result.log_entries[0].proof(&witness_1).await.expect("should get witness proof");
+    let proof2 = result.log_entries[0].proof(&witness_2).await.expect("should get witness proof");
     let mut witness_proofs = vec![WitnessEntry {
         version_id: result.log_entries[0].version_id.clone(),
-        proof: vec![witness_proof1, witness_proof2],
+        proof: vec![proof1, proof2],
     }];
-    let witness_proof1 =
-        result.log_entries[1].proof(&witness_1).await.expect("should get witness proof");
-    let witness_proof2 =
-        result.log_entries[1].proof(&witness_2).await.expect("should get witness proof");
+    let proof1 = result.log_entries[1].proof(&witness_1).await.expect("should get witness proof");
+    let proof2 = result.log_entries[1].proof(&witness_2).await.expect("should get witness proof");
     witness_proofs.push(WitnessEntry {
         version_id: result.log_entries[1].version_id.clone(),
-        proof: vec![witness_proof1, witness_proof2],
+        proof: vec![proof1, proof2],
     });
 
     let resolved_doc = webvh::resolve_log(&result.log_entries, Some(&witness_proofs), None)
@@ -216,7 +215,7 @@ async fn resolve_multiple() {
     // then compare.
     let mut result_doc = result.document.clone();
     result_doc.did_document_metadata = None;
-    let mut resolved_doc = resolved_doc.clone();
+    let mut resolved_doc = resolved_doc;
     resolved_doc.did_document_metadata = None;
 
     assert_eq!(result_doc, resolved_doc);
@@ -224,6 +223,8 @@ async fn resolve_multiple() {
 
 // Test resolving a deactivated document.
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
+#[cfg_attr(miri, ignore)]
 async fn resolve_deactivated() {
     let signer =
         Keyring::generate(&Vault, "wrd", "signing", Curve::Ed25519).await.expect("should generate");
@@ -317,7 +318,7 @@ async fn resolve_deactivated() {
     let update_result = UpdateBuilder::new()
         .document(builder)
         .log_entries(create_result.log)
-        .rotate_keys(&vec![update_multi], &vec![next_multi])
+        .rotate_keys(&[update_multi], &[next_multi])
         .signer(&signer)
         .build()
         .await
@@ -330,15 +331,15 @@ async fn resolve_deactivated() {
     let jwk = PublicKeyJwk::from_bytes(&verifying_key.to_bytes()).expect("should convert");
     let update_multi = jwk.to_multibase().expect("should get multibase");
 
-    let update_keys = vec![update_multi.clone()];
-    let update_keys: Vec<&str> = update_keys.iter().map(|s| s.as_str()).collect();
+    let update_keys = [update_multi.clone()];
+    let update_keys: Vec<&str> = update_keys.iter().map(String::as_str).collect();
 
     let next_key = signer.next_key().await.expect("should get next key");
     let jwk = PublicKeyJwk::from_bytes(&next_key.to_bytes()).expect("should convert");
     let next_multi = jwk.to_multibase().expect("should get multibase");
 
-    let next_keys = vec![next_multi];
-    let next_keys: Vec<&str> = next_keys.iter().map(|s| s.as_str()).collect();
+    let next_keys = [next_multi];
+    let next_keys: Vec<&str> = next_keys.iter().map(String::as_str).collect();
 
     let deactivate_result = DeactivateBuilder::from(&update_result.log_entries)
         .expect("should create builder")
