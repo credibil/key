@@ -9,3 +9,5 @@ on:
 jobs:
   verify:
     uses: credibil/pipeline/.github/workflows/verify.yaml@main
+    with:
+      outdated: rand
