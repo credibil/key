@@ -8,4 +8,4 @@ publish = false
 [dependencies]
 anyhow.workspace = true
 credibil-ecc.workspace = true
-dashmap = "6.1.0"
+dashmap.workspace = true

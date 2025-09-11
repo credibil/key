@@ -24,12 +24,12 @@ chrono = { version = "0.4.42", features = ["serde"] }
 credibil-core.workspace = true
 credibil-ecc.workspace = true
 credibil-jose.workspace = true
-multibase = "0.9.1"
+multibase.workspace = true
 nom = "8.0.0"
 serde.workspace = true
 serde_json.workspace = true
 serde_json_canonicalizer = "0.3.1"
-sha2 = "0.10.9"
+sha2.workspace = true
 url = "2.5.7"
 uuid = { version = "1.18.1", features = ["v4"] }
 
@@ -38,5 +38,5 @@ axum = "0.8.4"
 serde-jsonlines = "0.7.0"
 serde_json.workspace = true
 test-utils.workspace = true
-tokio = { version = "1.47.1", features = ["full"] }
+tokio = { workspace = true, features = ["full"] }
 tower-http = { version = "0.6.6", features = ["fs"] }

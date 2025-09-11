@@ -23,12 +23,12 @@ workspace = true
 anyhow.workspace = true
 base64ct.workspace = true
 credibil-ecc.workspace = true
-multibase = "0.9.1"
+multibase.workspace = true
 serde.workspace = true
-serde_json = { version = "1.0.143", features = ["alloc"] }
+serde_json.workspace = true
 tracing = "0.1.41"
 zeroize.workspace = true
 
 [dev-dependencies]
-dashmap = "6.1.0"
+dashmap.workspace = true
 tokio.workspace = true
