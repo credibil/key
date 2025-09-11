@@ -27,13 +27,16 @@ nursery = "warn"
 [workspace.dependencies]
 anyhow = "1.0.99"
 base64ct = { version = "1.8.0", features = ["std"] }
-credibil-core = { git = "https://github.com/credibil/core.git", tag = "v0.1.0" }
 credibil-api = { git = "https://github.com/credibil/core.git", tag = "v0.1.0" }
+credibil-core = { git = "https://github.com/credibil/core.git", tag = "v0.1.0" }
 credibil-did = { path = "crates/did" }
 credibil-ecc = { path = "ecc" }
 credibil-jose = { path = "jose" }
+dashmap = "6.1.0"
+multibase = "0.9.1"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = { version = "1.0.143", features = ["alloc"] }
+sha2 = "0.10.9"
 test-utils = { path = "crates/test-utils" }
 tokio = { version = "1.47.1", features = ["macros", "rt-multi-thread"] }
 tracing = "0.1.41"
