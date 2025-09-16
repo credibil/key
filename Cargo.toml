@@ -12,7 +12,7 @@ exclude = [".*"]
 homepage = "https://credibil.io"
 keywords = ["credentials", "decentralized", "identity", "openid", "verifiable"]
 repository = "https://github.com/credibil"
-rust-version = "1.88"
+rust-version = "1.89"
 version = "0.1.0"
 
 [workspace.lints.rust]
@@ -34,8 +34,8 @@ credibil-ecc = { path = "ecc" }
 credibil-jose = { path = "jose" }
 dashmap = "6.1.0"
 multibase = "0.9.1"
-serde = { version = "1.0.219", features = ["derive"] }
-serde_json = { version = "1.0.143", features = ["alloc"] }
+serde = { version = "1.0.225", features = ["derive"] }
+serde_json = { version = "1.0.145", features = ["alloc"] }
 sha2 = "0.10.9"
 test-utils = { path = "crates/test-utils" }
 tokio = { version = "1.47.1", features = ["macros", "rt-multi-thread"] }
