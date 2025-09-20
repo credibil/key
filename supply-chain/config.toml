@@ -74,7 +74,7 @@ version = "2.9.4"
 criteria = "safe-to-deploy"
 
 [[exemptions.cc]]
-version = "1.2.37"
+version = "1.2.38"
 criteria = "safe-to-deploy"
 
 [[exemptions.chacha20]]
@@ -182,7 +182,7 @@ version = "0.13.8"
 criteria = "safe-to-deploy"
 
 [[exemptions.find-msvc-tools]]
-version = "0.1.1"
+version = "0.1.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.form_urlencoded]]
@@ -230,7 +230,7 @@ version = "0.7.10"
 criteria = "safe-to-run"
 
 [[exemptions.js-sys]]
-version = "0.3.79"
+version = "0.3.80"
 criteria = "safe-to-deploy"
 
 [[exemptions.k256]]
@@ -386,23 +386,23 @@ version = "0.9.5"
 criteria = "safe-to-deploy"
 
 [[exemptions.wasm-bindgen]]
-version = "0.2.102"
+version = "0.2.103"
 criteria = "safe-to-deploy"
 
 [[exemptions.wasm-bindgen-backend]]
-version = "0.2.102"
+version = "0.2.103"
 criteria = "safe-to-deploy"
 
 [[exemptions.wasm-bindgen-macro]]
-version = "0.2.102"
+version = "0.2.103"
 criteria = "safe-to-deploy"
 
 [[exemptions.wasm-bindgen-macro-support]]
-version = "0.2.102"
+version = "0.2.103"
 criteria = "safe-to-deploy"
 
 [[exemptions.wasm-bindgen-shared]]
-version = "0.2.102"
+version = "0.2.103"
 criteria = "safe-to-deploy"
 
 [[exemptions.x25519-dalek]]

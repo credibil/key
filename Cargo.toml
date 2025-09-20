@@ -12,7 +12,7 @@ exclude = [".*"]
 homepage = "https://credibil.io"
 keywords = ["credentials", "decentralized", "identity", "openid", "verifiable"]
 repository = "https://github.com/credibil"
-rust-version = "1.89"
+rust-version = "1.90"
 version = "0.3.0"
 
 [workspace.lints.rust]
@@ -25,7 +25,7 @@ pedantic = "warn"
 nursery = "warn"
 
 [workspace.dependencies]
-anyhow = "1.0.99"
+anyhow = "1.0.100"
 base64ct = { version = "1.8.0", features = ["std"] }
 credibil-api = { git = "https://github.com/credibil/core.git", tag = "v0.1.0" }
 credibil-core = { git = "https://github.com/credibil/core.git", tag = "v0.1.0" }
