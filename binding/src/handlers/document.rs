@@ -39,8 +39,8 @@ async fn document(
 impl<B: Binding> Handler<DocumentResponse, B> for Request<DocumentRequest> {
     type Error = Error;
 
-    async fn handle(self, owner: &str, key_binding: &B) -> Result<Response<DocumentResponse>> {
-        Ok(document(owner, key_binding, self.body).await?.into())
+    async fn handle(self, owner: &str, provider: &B) -> Result<Response<DocumentResponse>> {
+        Ok(document(owner, provider, self.body).await?.into())
     }
 }
 

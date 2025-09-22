@@ -203,7 +203,7 @@ fn scheme(input: &str) -> IResult<&str, &str> {
 fn method(input: &str) -> IResult<&str, Method> {
     let (next, method) = take_until(":").parse(input)?;
     let method = Method::from_str(method)
-        .map_err(|_| NomErr::Error(NomError::new(method, ErrorKind::TakeUntil)))?;
+        .map_err(|_err| NomErr::Error(NomError::new(method, ErrorKind::TakeUntil)))?;
     let (next, _) = take(1usize).parse(next)?;
     Ok((next, method))
 }
@@ -214,7 +214,7 @@ fn id(input: &str) -> IResult<&str, &str> {
 
 fn port(input: &str) -> IResult<&str, u16> {
     let (next, p) = preceded(tag("%3A"), is_not("/:?#")).parse(input)?;
-    let p = p.parse::<u16>().map_err(|_| NomErr::Error(NomError::new(p, ErrorKind::IsNot)))?;
+    let p = p.parse::<u16>().map_err(|_err| NomErr::Error(NomError::new(p, ErrorKind::IsNot)))?;
     Ok((next, p))
 }
 

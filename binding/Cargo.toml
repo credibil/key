@@ -3,6 +3,7 @@ name = "credibil-binding"
 description = "Credibil key binding"
 readme = "README.md"
 authors.workspace = true
+categories = ["public-key", "key-binding", "did"]
 edition.workspace = true
 exclude.workspace = true
 homepage.workspace = true
