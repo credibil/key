@@ -3,6 +3,7 @@ name = "credibil-jose"
 description = "Credibil utilities for JOSE and JWT"
 readme = "README.md"
 authors.workspace = true
+categories = ["jose", "jwe", "jwk", "jwt", "jws"]
 edition.workspace = true
 homepage.workspace = true
 keywords.workspace = true

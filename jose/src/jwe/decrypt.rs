@@ -1,4 +1,3 @@
-use std::fmt;
 use std::str::FromStr;
 
 use anyhow::{Result, anyhow};
@@ -107,8 +106,10 @@ impl FromStr for Jwe {
         }
 
         // unpack flattened Protected header
-        let bytes = Base64UrlUnpadded::decode_vec(parts[0]).map_err(|_| fmt::Error)?;
-        let protected: ProtectedFlat = serde_json::from_slice(&bytes).map_err(|_| fmt::Error)?;
+        let bytes = Base64UrlUnpadded::decode_vec(parts[0])
+            .map_err(|e| anyhow!("issue decoding protected header: {e}"))?;
+        let protected: ProtectedFlat = serde_json::from_slice(&bytes)
+            .map_err(|e| anyhow!("issue deserializing protected header: {e}"))?;
 
         // reconstruct fields
         let enc = protected.inner.enc;
@@ -117,7 +118,8 @@ impl FromStr for Jwe {
 
         // calculate AAD
         let protected = Protected { alg: None, enc };
-        let aad_bytes = serde_json::to_vec(&protected).map_err(|_| fmt::Error)?;
+        let aad_bytes =
+            serde_json::to_vec(&protected).map_err(|e| anyhow!("issue serializing AAD: {e}"))?;
 
         Ok(Self {
             protected,

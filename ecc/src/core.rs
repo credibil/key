@@ -173,7 +173,7 @@ impl FromStr for SecretKey {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let decoded = Base64UrlUnpadded::decode_vec(s)?;
         let bytes: [u8; SECRET_KEY_LENGTH] =
-            decoded.try_into().map_err(|_| anyhow!("invalid key"))?;
+            decoded.try_into().map_err(|_secret| anyhow!("invalid key"))?;
         Ok(Self::from(bytes))
     }
 }
@@ -373,7 +373,7 @@ impl TryFrom<&str> for PublicKey {
 
     fn try_from(val: &str) -> Result<Self, Self::Error> {
         let decoded = Base64UrlUnpadded::decode_vec(val)?;
-        let bytes: [u8; 32] = decoded.try_into().map_err(|_| anyhow!("invalid key"))?;
+        let bytes: [u8; 32] = decoded.try_into().map_err(|_key| anyhow!("invalid key"))?;
         Ok(Self::from(bytes))
     }
 }
@@ -396,8 +396,10 @@ impl TryFrom<PublicKey> for ecies::PublicKey {
     type Error = anyhow::Error;
 
     fn try_from(val: PublicKey) -> Result<Self> {
-        let key: [u8; 65] =
-            val.to_vec().try_into().map_err(|_| anyhow!("issue converting public key to array"))?;
+        let key: [u8; 65] = val
+            .to_vec()
+            .try_into()
+            .map_err(|_key| anyhow!("issue converting public key to array"))?;
         Self::parse(&key).map_err(|e| anyhow!("issue parsing public key: {e}"))
     }
 }

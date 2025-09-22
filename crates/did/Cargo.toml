@@ -3,6 +3,7 @@ name = "credibil-did"
 description = "Key management sample code for testing"
 readme = "README.md"
 authors.workspace = true
+categories = ["did:key", "did:web", "did:webvh"]
 edition.workspace = true
 exclude.workspace = true
 homepage.workspace = true
