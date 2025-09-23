@@ -110,7 +110,7 @@ version = "0.2.17"
 criteria = "safe-to-deploy"
 
 [[exemptions.credibil-core]]
-version = "0.1.0@git:b27dc201fea251e6270bc88eac04d74006a9a54f"
+version = "0.2.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.critical-section]]
@@ -337,9 +337,21 @@ criteria = "safe-to-deploy"
 version = "1.0.27"
 criteria = "safe-to-deploy"
 
+[[exemptions.serde]]
+version = "1.0.226"
+criteria = "safe-to-deploy"
+
 [[exemptions.serde-jsonlines]]
 version = "0.7.0"
 criteria = "safe-to-run"
+
+[[exemptions.serde_core]]
+version = "1.0.226"
+criteria = "safe-to-deploy"
+
+[[exemptions.serde_derive]]
+version = "1.0.226"
+criteria = "safe-to-deploy"
 
 [[exemptions.serde_json_canonicalizer]]
 version = "0.3.1"

@@ -45,7 +45,13 @@ duplicates = "deny"
 include-path-dependencies = true
 unused = "deny"
 
-[sources.allow-org]
-github = [
-  "credibil",
+[sources]
+allow-registry = [
+  "registry+https://github.com/rust-lang/crates.io-index",
+  "sparse+https://pkgs.dev.azure.com/credibil/_packaging/credibil/Cargo/index/",
 ]
+
+# [sources.allow-org]
+# github = [
+#   "credibil",
+# ]
