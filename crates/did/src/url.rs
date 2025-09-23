@@ -386,7 +386,7 @@ mod tests {
     #[test]
     fn test_parse_scheme() {
         let s = "wibble:key:123456789abcdefghi#key-1";
-        assert!(scheme(s).is_err());
+        scheme(s).unwrap_err();
         let s = "did:key:123456789abcdefghi#key-1";
         let (next, did) = scheme(s).expect("should parse scheme");
         assert_eq!(did, "did");
@@ -396,7 +396,7 @@ mod tests {
     #[test]
     fn test_parse_method() {
         let s = "wibble:123456789abcdefghi#key-1";
-        assert!(method(s).is_err());
+        method(s).unwrap_err();
         let s = "key:123456789abcdefghi#key-1";
         let (next, m) = method(s).expect("should parse method");
         assert_eq!(m, Method::Key);
@@ -440,7 +440,7 @@ mod tests {
     #[test]
     fn test_parse_port() {
         let s = "?service=example#key-1";
-        assert!(port(s).is_err());
+        port(s).unwrap_err();
         let s = "%3A8080/path/to/resource?service=example&hl=hashlink#z6MkijyunEqPi7hzgJirb4tQLjztCPbJeeZvXEySuzbY6MLv";
         let (next, p) = port(s).expect("should parse port");
         assert_eq!(p, 8080);
@@ -454,7 +454,7 @@ mod tests {
     #[ignore = "path parsing not implemented"]
     fn test_parse_path() {
         let s = "?service=example#key-1";
-        assert!(path(s).is_err());
+        path(s).unwrap_err();
         let s = "/path/to/resource?service=example&hl=hashlink#z6MkijyunEqPi7hzgJirb4tQLjztCPbJeeZvXEySuzbY6MLv";
         let (next, p) = path(s).expect("should parse resource path");
         assert_eq!(p, vec!["path".to_string(), "to".to_string(), "resource".to_string()]);
@@ -467,7 +467,7 @@ mod tests {
     #[test]
     fn test_parse_query() {
         let s = "#key-1";
-        assert!(query(s).is_err());
+        query(s).unwrap_err();
         let s = "?service=example#key-1";
         let (next, q) = query(s).expect("should parse query");
         assert_eq!(q.service, Some("example".to_string()));
@@ -489,7 +489,7 @@ mod tests {
     #[test]
     fn test_parse_fragment() {
         let s = "?service=example#key-1";
-        assert!(fragment(s).is_err());
+        fragment(s).unwrap_err();
         let s = "#z6MkijyunEqPi7hzgJirb4tQLjztCPbJeeZvXEySuzbY6M-Lv";
         let (next, f) = fragment(s).expect("should parse fragment");
         assert_eq!(f, "z6MkijyunEqPi7hzgJirb4tQLjztCPbJeeZvXEySuzbY6M-Lv");
