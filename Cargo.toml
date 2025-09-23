@@ -57,8 +57,9 @@ unused_result_ok = "warn"
 [workspace.dependencies]
 anyhow = "1.0.100"
 base64ct = { version = "1.8.0", features = ["std"] }
-credibil-api = { git = "https://github.com/credibil/core.git", tag = "v0.1.0" }
-credibil-core = { git = "https://github.com/credibil/core.git", tag = "v0.1.0" }
+credibil-api = { version = "0.2.1", registry = "credibil" }
+credibil-core = { version = "0.2.1", registry = "credibil" }
+# credibil-core = { version = "0.2.1", registry = "credibil" }
 credibil-did = { path = "crates/did" }
 credibil-ecc = { path = "ecc" }
 credibil-jose = { path = "jose" }
