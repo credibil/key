@@ -5,9 +5,10 @@ on:
   workflow_dispatch:
   push:
     tags:
-    - 'v*'
+    - v**
     
 jobs:
   crates:
     uses: credibil/pipeline/.github/workflows/crates.yaml@main
+    secrets: inherit
  
