@@ -59,9 +59,9 @@ anyhow = "1.0.100"
 base64ct = { version = "1.8.0", features = ["std"] }
 credibil-api = { version = "0.2.1", registry = "credibil" }
 credibil-core = { version = "0.2.1", registry = "credibil" }
-credibil-did = { path = "crates/did", version = "0.3.0", registry = "credibil" }
-credibil-ecc = { path = "ecc", version = "0.3.0", registry = "credibil" }
-credibil-jose = { path = "jose", version = "0.3.0", registry = "credibil" }
+credibil-did = { path = "crates/did" }
+credibil-ecc = { path = "ecc" }
+credibil-jose = { path = "jose" }
 dashmap = "6.1.0"
 multibase = "0.9.1"
 serde = { version = "1.0.225", features = ["derive"] }
