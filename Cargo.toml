@@ -13,7 +13,7 @@ homepage = "https://credibil.io"
 keywords = ["credentials", "decentralized", "identity", "openid", "verifiable"]
 repository = "https://github.com/credibil"
 rust-version = "1.90"
-version = "0.3.0"
+version = "0.4.0"
 
 [workspace.lints.rust]
 # https://dirname.github.io/rust-std-doc/rustc/lints/listing/allowed-by-default.html
