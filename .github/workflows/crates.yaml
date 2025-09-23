@@ -1,5 +1,3 @@
-
-
 name: Publish Crates
 
 on:
@@ -11,5 +9,6 @@ on:
 jobs:
   crates:
     uses: credibil/pipeline/.github/workflows/crates.yaml@main
+    secrets: inherit
  
  
