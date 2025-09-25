@@ -185,10 +185,6 @@ criteria = "safe-to-deploy"
 version = "0.1.2"
 criteria = "safe-to-deploy"
 
-[[exemptions.form_urlencoded]]
-version = "1.2.2"
-criteria = "safe-to-deploy"
-
 [[exemptions.generic-array]]
 version = "0.14.7"
 criteria = "safe-to-deploy"
@@ -219,10 +215,6 @@ criteria = "safe-to-run"
 
 [[exemptions.iana-time-zone]]
 version = "0.1.64"
-criteria = "safe-to-deploy"
-
-[[exemptions.idna]]
-version = "1.1.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.io-uring]]
@@ -285,10 +277,6 @@ criteria = "safe-to-deploy"
 version = "0.7.0"
 criteria = "safe-to-deploy"
 
-[[exemptions.percent-encoding]]
-version = "2.3.2"
-criteria = "safe-to-deploy"
-
 [[exemptions.pkcs8]]
 version = "0.10.2"
 criteria = "safe-to-deploy"
@@ -337,21 +325,9 @@ criteria = "safe-to-deploy"
 version = "1.0.27"
 criteria = "safe-to-deploy"
 
-[[exemptions.serde]]
-version = "1.0.226"
-criteria = "safe-to-deploy"
-
 [[exemptions.serde-jsonlines]]
 version = "0.7.0"
 criteria = "safe-to-run"
-
-[[exemptions.serde_core]]
-version = "1.0.226"
-criteria = "safe-to-deploy"
-
-[[exemptions.serde_derive]]
-version = "1.0.226"
-criteria = "safe-to-deploy"
 
 [[exemptions.serde_json_canonicalizer]]
 version = "0.3.1"
@@ -383,10 +359,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.typenum]]
 version = "1.18.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.url]]
-version = "2.5.7"
 criteria = "safe-to-deploy"
 
 [[exemptions.uuid]]
