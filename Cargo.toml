@@ -59,9 +59,6 @@ anyhow = "1.0.100"
 base64ct = { version = "1.8.0", features = ["std"] }
 credibil-api = { version = "0.2.1", registry = "credibil" }
 credibil-core = { version = "0.2.1", registry = "credibil" }
-credibil-did = { path = "crates/did", version = "0.4.0" }
-credibil-ecc = { path = "ecc", version = "0.4.0" }
-credibil-jose = { path = "jose", version = "0.4.0" }
 dashmap = "6.1.0"
 multibase = "0.9.1"
 serde = { version = "1.0.225", features = ["derive"] }
@@ -71,6 +68,11 @@ test-utils = { path = "crates/test-utils" }
 tokio = { version = "1.47.1", features = ["macros", "rt-multi-thread"] }
 tracing = "0.1.41"
 zeroize = "1.8.1"
+
+# internally referenced crates
+credibil-did = { path = "crates/did", version = "0.4.0", registry = "credibil" }
+credibil-ecc = { path = "ecc", version = "0.4.0", registry = "credibil" }
+credibil-jose = { path = "jose", version = "0.4.0", registry = "credibil" }
 
 # [patch."https://github.com/credibil/core"]
 # credibil-core = { path = "../core" }
